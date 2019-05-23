@@ -46,6 +46,7 @@
  *                                   non-blocking, this signal indicates that there will be no
  *                                   hazards from this point on
  *   chk_roll_o                  - Roll back all the instructions in the pipe
+ *   chk_poison_iss_o            - Poison the instruction currently in issue stage
  *   chk_poison_isd_o            - Poison the instruction currently in ISD stage
  *   chk_poison_ex_o             - Poison all instructions currently in the pipe 
  *                                   prior to the commit point
@@ -69,8 +70,6 @@ module bp_be_checker_top
                                 ,asid_width_p
                                 ,branch_metadata_fwd_width_p
                                 )
-
-   , parameter load_to_use_forwarding_p = 1
 
    // Generated parameters
    , localparam calc_status_width_lp = `bp_be_calc_status_width(vaddr_width_p, branch_metadata_fwd_width_p)
@@ -114,6 +113,7 @@ module bp_be_checker_top
    // Checker pipeline control information
    , output                           chk_dispatch_v_o
    , output                           chk_roll_o
+   , output                           chk_poison_iss_o
    , output                           chk_poison_isd_o
    , output                           chk_poison_ex1_o
    , output                           chk_poison_ex2_o
@@ -124,10 +124,12 @@ module bp_be_checker_top
    , output [vaddr_width_p-1:0]       pc_o
    , input [mtvec_width_lp-1:0]       mtvec_i
    , input [mepc_width_lp-1:0]        mepc_i
+   , input                            tlb_fence_i
+   , input                            ifence_i
    
    //iTLB fill interface
     , input                           itlb_fill_v_i
-    , input [vtag_width_lp-1:0]       itlb_fill_vtag_i
+    , input [vaddr_width_p-1:0]       itlb_fill_vaddr_i
     , input [tlb_entry_width_lp-1:0]  itlb_fill_entry_i
    );
 
@@ -140,6 +142,7 @@ module bp_be_checker_top
 
 // Intermediate connections
 logic [vaddr_width_p-1:0] expected_npc;
+logic flush;
 
 // Datapath
 bp_be_director 
@@ -150,6 +153,7 @@ bp_be_director
 
    ,.calc_status_i(calc_status_i) 
    ,.expected_npc_o(expected_npc)
+   ,.flush_o(flush)
 
    ,.fe_cmd_o(fe_cmd_o)
    ,.fe_cmd_v_o(fe_cmd_v_o)
@@ -164,16 +168,16 @@ bp_be_director
    ,.pc_o(pc_o)
    ,.mtvec_i(mtvec_i)
    ,.mepc_i(mepc_i)
+   ,.tlb_fence_i(tlb_fence_i)
+   ,.ifence_i(ifence_i)
 
    ,.itlb_fill_v_i(itlb_fill_v_i)
-   ,.itlb_fill_vtag_i(itlb_fill_vtag_i)
+   ,.itlb_fill_vaddr_i(itlb_fill_vaddr_i)
    ,.itlb_fill_entry_i(itlb_fill_entry_i)
    );
 
 bp_be_detector 
- #(.cfg_p(cfg_p)
-   ,.load_to_use_forwarding_p(load_to_use_forwarding_p)
-   ) 
+ #(.cfg_p(cfg_p))
  detector
   (.clk_i(clk_i)
    ,.reset_i(reset_i)
@@ -182,10 +186,11 @@ bp_be_detector
    ,.mmu_cmd_ready_i(mmu_cmd_ready_i)
    ,.expected_npc_i(expected_npc)
 
-   ,.trap_v_i(trap_v_i)
+   ,.flush_i(flush)
 
    ,.chk_dispatch_v_o(chk_dispatch_v_o)
    ,.chk_roll_o(chk_roll_o)
+   ,.chk_poison_iss_o(chk_poison_iss_o)
    ,.chk_poison_isd_o(chk_poison_isd_o)
    ,.chk_poison_ex1_o(chk_poison_ex1_o)
    ,.chk_poison_ex2_o(chk_poison_ex2_o)

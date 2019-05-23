@@ -46,12 +46,11 @@ sync_top: bge r0 r1 ack_top
 pushq lceCmd SYNC r0
 inc r0
 bi sync_top
-ack_top: bz r0 reset_done
+ack_top: bz r0 ready
 wfq lceResp
 popq lceResp
 dec r0
 bi ack_top
-reset_done: bi ready
 
 # Ready Routine
 ready: wfq lceReq
@@ -63,17 +62,17 @@ lce_req: popq lceReq
 bf ucf uncached_req
 rdp req
 bf pf error
-rdw req
+rdw req req
 gad
-bi next_coh_state
+# fall through
 
 # Next Coherence State Routine
 # write request means set to M, else check non-exclusive request
 next_coh_state: bf rqf next_coh_set_m
 # check non-exclusive request (read-only) set to S, else check if block cached
 bf nerf next_coh_set_s
-# check if block cached by other reader
-bf if next_coh_set_s
+# block cached somewhere
+bf cf next_coh_set_s
 # invalidations not required, thus block not cache, set to E
 next_coh_set_e: movi E nextCohSt
 bi inv_check
@@ -124,10 +123,11 @@ bi transfer_check
 # Replacement Routine
 replace: pushq lceCmd WB req lru lru
 wfq lceDataResp
-popq lceDataResp
+poph lceDataResp
 wdp req 1
 sf rwbf
 pushq memDataCmd lru
+popq lceDataResp
 sfz rwbf
 wfq memResp
 bi mem_resp
@@ -143,7 +143,7 @@ pushq lceCmd TR tr req tr
 pushq lceCmd WB tr req tr
 # wait for transfer WB response
 wfq lceDataResp
-popq lceDataResp
+poph lceDataResp
 bf nwbf complete_transfer
 # perform the transfer WB to mem
 wdp req 1
@@ -155,7 +155,8 @@ wdp req 0
 sf pcf
 
 # wait for the transfer ack
-complete_transfer: wfq lceResp
+complete_transfer: popq lceDataResp
+wfq lceResp
 popq lceResp
 # TODO: ack_type == transfer_ack
 bi ready
@@ -165,6 +166,7 @@ read_l2: wdp req 1
 wde req req lru req nextCohSt
 pushq memCmd
 wfq memDataResp
+poph memDataResp
 bi mem_data_resp
 
 # Memory Response Routine
@@ -175,10 +177,10 @@ sf pcf
 bi ready
 
 # Memory Data Response Routine
-mem_data_resp: popq memDataResp
-wdp req 0
+mem_data_resp: wdp req 0
 pushq lceDataCmd
 pushq lceCmd ST req req lru
+popq memDataResp
 wfq lceResp
 popq lceResp
 bi ready
@@ -187,8 +189,9 @@ bi ready
 uncached_req: bf rqf uncached_store
 pushq memCmd
 wfq memDataResp
-popq memDataResp
+poph memDataResp
 pushq lceDataCmd
+popq memDataResp
 bi ready
 uncached_store: pushq memDataCmd req
 wfq memResp

@@ -75,6 +75,7 @@ module bp_be_director
    // Dependency information
    , input [calc_status_width_lp-1:0]  calc_status_i
    , output [vaddr_width_p-1:0]        expected_npc_o
+   , output                            flush_o
 
    // FE-BE interface
    , output [fe_cmd_width_lp-1:0]      fe_cmd_o
@@ -92,10 +93,12 @@ module bp_be_director
    , output [vaddr_width_p-1:0]       pc_o 
    , input [mepc_width_lp-1:0]        mtvec_i
    , input [mtvec_width_lp-1:0]       mepc_i
+   , input                            tlb_fence_i
+   , input                            ifence_i
    
    //iTLB fill interface
    , input                           itlb_fill_v_i
-   , input [vtag_width_lp-1:0]       itlb_fill_vtag_i
+   , input [vaddr_width_p-1:0]       itlb_fill_vaddr_i
    , input [tlb_entry_width_lp-1:0]  itlb_fill_entry_i
   );
 
@@ -222,9 +225,9 @@ bsg_dff_reset_en
  redirect_pending_reg
   (.clk_i(clk_i)
    ,.reset_i(reset_i)
-   ,.en_i(calc_status.ex1_instr_v)
+   ,.en_i(calc_status.ex1_v | trap_v_i)
 
-   ,.data_i(npc_mismatch_v)
+   ,.data_i(npc_mismatch_v | trap_v_i)
    ,.data_o(redirect_pending)
    );
 
@@ -243,9 +246,12 @@ bsg_dff_reset_en
 // Generate control signals
 assign expected_npc_o = npc_r;
 // Increment the checkpoint if there's a committing instruction
+// The itlb fill is strictly unnecessary, but we would need to work the rollback logic to work
+// without it
 assign chk_dequeue_fe_o = ~calc_status.mem3_miss_v & calc_status.instr_cmt_v;
 // Flush the FE queue if there's a pc redirect
-assign chk_flush_fe_o = fe_cmd_v & (fe_cmd.opcode == e_op_pc_redirection);
+assign chk_flush_fe_o = (fe_cmd_v & (fe_cmd.opcode != e_op_attaboy));
+
 // Rollback the FE queue on a cache miss
 assign chk_roll_fe_o  = calc_status.mem3_miss_v;
 // The current PC, used for interrupts
@@ -272,6 +278,13 @@ always_ff @(posedge clk_i)
       end
   end
 
+// Set the fence if we have a cmd which is not an attaboy
+// FE fencing is not supported yet
+//assign fe_cmd_fence_set_o = fe_cmd_v & ~(fe_cmd.opcode == e_op_attaboy);
+
+// TODO: Simplify assignments
+assign flush_o = fe_cmd_v & (fe_cmd.opcode != e_op_attaboy) & ((fe_cmd.opcode != e_op_pc_redirection) | trap_v_i);
+
 always_comb 
   begin : fe_cmd_adapter
     fe_cmd = 'b0;
@@ -287,11 +300,33 @@ always_comb
         fe_cmd.operands.reset_operands = fe_cmd_reset_operands;
         fe_cmd_v = fe_cmd_ready_i;
       end
+    else if(itlb_fill_v_i)
+      begin : itlb_fill
+        fe_cmd.opcode = e_op_itlb_fill_response;
+        fe_cmd.operands.itlb_fill_response.vaddr = itlb_fill_vaddr_i;
+        fe_cmd.operands.itlb_fill_response.pte_entry_leaf = itlb_fill_entry_i;
+      
+        fe_cmd_v = fe_cmd_ready_i;
+      end
+    else if(tlb_fence_i)
+      begin : tlb_fence
+        fe_cmd.opcode = e_op_itlb_fence;
+        fe_cmd.operands.icache_fence.pc = calc_status.mem3_pc;
+        
+        fe_cmd_v = fe_cmd_ready_i;
+      end
+    else if(ifence_i)
+      begin : icache_fence
+        fe_cmd.opcode = e_op_icache_fence;
+        fe_cmd.operands.icache_fence.pc = calc_status.mem3_pc;
+
+        fe_cmd_v = fe_cmd_ready_i;
+      end
     // Redirect the pc if there's an NPC mismatch
-    else if(calc_status.ex1_instr_v & npc_mismatch_v) 
+    else if((calc_status.ex1_v & npc_mismatch_v) | trap_v_i) 
       begin : pc_redirect
         fe_cmd.opcode                                   = e_op_pc_redirection;
-        fe_cmd_pc_redirect_operands.pc                  = expected_npc_o;
+        fe_cmd_pc_redirect_operands.pc                  = trap_v_i ? npc_n : expected_npc_o;
         fe_cmd_pc_redirect_operands.subopcode           = e_subop_branch_mispredict;
         fe_cmd_pc_redirect_operands.branch_metadata_fwd =  calc_status.int1_branch_metadata_fwd;
 
@@ -301,7 +336,7 @@ always_comb
 
         fe_cmd.operands.pc_redirect_operands = fe_cmd_pc_redirect_operands;
 
-        fe_cmd_v = fe_cmd_ready_i & ~chk_roll_fe_o & ~redirect_pending;
+        fe_cmd_v = fe_cmd_ready_i & ~chk_roll_fe_o & (~redirect_pending | trap_v_i);
       end 
     // Send an attaboy if there's a correct prediction
     else if(calc_status.ex1_instr_v & ~npc_mismatch_v & attaboy_pending) 
@@ -313,14 +348,6 @@ always_comb
         fe_cmd.operands.attaboy = fe_cmd_attaboy;
 
         fe_cmd_v = fe_cmd_ready_i & ~chk_roll_fe_o & ~redirect_pending;
-      end
-    else if(itlb_fill_v_i)
-      begin
-        fe_cmd.opcode = e_op_itlb_fill_response;
-        fe_cmd.operands.itlb_fill_response.vaddr = {itlb_fill_vtag_i, bp_page_offset_width_gp'(0)};
-        fe_cmd.operands.itlb_fill_response.pte_entry_leaf = itlb_fill_entry_i;
-      
-        fe_cmd_v = fe_cmd_ready_i & ~chk_roll_fe_o;
       end
   end
 endmodule : bp_be_director

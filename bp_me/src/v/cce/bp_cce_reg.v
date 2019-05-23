@@ -12,7 +12,7 @@ module bp_cce_reg
   import bp_cce_pkg::*;
   #(parameter num_lce_p                     = "inv"
     , parameter num_cce_p                   = "inv"
-    , parameter addr_width_p                = "inv"
+    , parameter paddr_width_p                = "inv"
     , parameter lce_assoc_p                 = "inv"
     , parameter lce_sets_p                  = "inv"
     , parameter block_size_in_bytes_p       = "inv"
@@ -25,35 +25,21 @@ module bp_cce_reg
     , localparam lg_block_size_in_bytes_lp  = `BSG_SAFE_CLOG2(block_size_in_bytes_p)
     , localparam lg_lce_assoc_lp            = `BSG_SAFE_CLOG2(lce_assoc_p)
     , localparam lg_lce_sets_lp             = `BSG_SAFE_CLOG2(lce_sets_p)
-    , localparam tag_width_lp               = (addr_width_p-lg_lce_sets_lp-lg_block_size_in_bytes_lp)
+    , localparam tag_width_lp               =
+      (paddr_width_p-lg_lce_sets_lp-lg_block_size_in_bytes_lp)
     , localparam entry_width_lp             = (tag_width_lp+`bp_cce_coh_bits)
     , localparam tag_set_width_lp           = (entry_width_lp*lce_assoc_p)
-    , localparam way_group_width_lp         = (tag_set_width_lp*num_lce_p)
 
-    , localparam bp_lce_cce_req_width_lp=`bp_lce_cce_req_width(num_cce_p
-                                                               ,num_lce_p
-                                                               ,addr_width_p
-                                                               ,lce_assoc_p
-                                                               ,lce_req_data_width_p)
-
-    , localparam bp_lce_cce_resp_width_lp=`bp_lce_cce_resp_width(num_cce_p
-                                                                 ,num_lce_p
-                                                                 ,addr_width_p)
-
-    , localparam bp_lce_cce_data_resp_width_lp=`bp_lce_cce_data_resp_width(num_cce_p
-                                                                           ,num_lce_p
-                                                                           ,addr_width_p
-                                                                           ,block_size_in_bits_lp)
-
-    , localparam bp_mem_cce_resp_width_lp=`bp_mem_cce_resp_width(addr_width_p
-                                                                 ,num_lce_p
-                                                                 ,lce_assoc_p)
-
-    , localparam bp_mem_cce_data_resp_width_lp=`bp_mem_cce_data_resp_width(addr_width_p
-                                                                           ,block_size_in_bits_lp
-                                                                           ,num_lce_p
-                                                                           ,lce_assoc_p)
-
+    , localparam bp_lce_cce_req_width_lp=
+      `bp_lce_cce_req_width(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, lce_req_data_width_p)
+    , localparam bp_lce_cce_resp_width_lp=
+      `bp_lce_cce_resp_width(num_cce_p, num_lce_p, paddr_width_p)
+    , localparam bp_lce_cce_data_resp_width_lp=
+      `bp_lce_cce_data_resp_width(num_cce_p, num_lce_p, paddr_width_p, block_size_in_bits_lp)
+    , localparam bp_mem_cce_resp_width_lp=
+      `bp_mem_cce_resp_width(paddr_width_p, num_lce_p, lce_assoc_p)
+    , localparam bp_mem_cce_data_resp_width_lp=
+      `bp_mem_cce_data_resp_width(paddr_width_p, block_size_in_bits_lp, num_lce_p, lce_assoc_p)
   )
   (input                                                                   clk_i
    , input                                                                 reset_i
@@ -70,20 +56,19 @@ module bp_cce_reg
    , input [`bp_cce_inst_gpr_width-1:0]                                    alu_res_i
    , input [`bp_cce_inst_gpr_width-1:0]                                    mov_src_i
 
-   , input [way_group_width_lp-1:0]                                        dir_way_group_o_i
-   , input                                                                 dir_way_group_v_o_i
-   , input [`bp_cce_coh_bits-1:0]                                          dir_coh_state_o_i
-   , input                                                                 dir_entry_v_o_i
    , input                                                                 dir_pending_o_i
    , input                                                                 dir_pending_v_o_i
 
-   , input [num_lce_p-1:0]                                                 gad_sharers_hits_i
-   , input [num_lce_p-1:0][lg_lce_assoc_lp-1:0]                            gad_sharers_ways_i
-   , input [num_lce_p-1:0][`bp_cce_coh_bits-1:0]                           gad_sharers_coh_states_i
+   , input                                                                 dir_sharers_v_i
+   , input [num_lce_p-1:0]                                                 dir_sharers_hits_i
+   , input [num_lce_p-1:0][lg_lce_assoc_lp-1:0]                            dir_sharers_ways_i
+   , input [num_lce_p-1:0][`bp_cce_coh_bits-1:0]                           dir_sharers_coh_states_i
+
+   , input                                                                 dir_lru_v_i
+   , input                                                                 dir_lru_cached_excl_i
+   , input [tag_width_lp-1:0]                                              dir_lru_tag_i
 
    , input [lg_lce_assoc_lp-1:0]                                           gad_req_addr_way_i
-   , input [`bp_cce_coh_bits-1:0]                                          gad_coh_state_i
-   , input [tag_width_lp-1:0]                                              gad_lru_tag_i
    , input [lg_num_lce_lp-1:0]                                             gad_transfer_lce_i
    , input [lg_lce_assoc_lp-1:0]                                           gad_transfer_lce_way_i
    , input                                                                 gad_transfer_flag_i
@@ -91,26 +76,24 @@ module bp_cce_reg
    , input                                                                 gad_upgrade_flag_i
    , input                                                                 gad_invalidate_flag_i
    , input                                                                 gad_exclusive_flag_i
+   , input                                                                 gad_cached_flag_i
 
    // Register value outputs
 
    , output logic [lg_num_lce_lp-1:0]                                      req_lce_o
-   , output logic [addr_width_p-1:0]                                       req_addr_o
+   , output logic [paddr_width_p-1:0]                                      req_addr_o
    , output logic [tag_width_lp-1:0]                                       req_tag_o
 
 
    , output logic [lg_lce_assoc_lp-1:0]                                    req_addr_way_o
-   , output logic [`bp_cce_coh_bits-1:0]                                   req_coh_state_o
 
    , output logic [lg_lce_assoc_lp-1:0]                                    lru_way_o
-   , output logic [addr_width_p-1:0]                                       lru_addr_o
+   , output logic [paddr_width_p-1:0]                                      lru_addr_o
 
    , output logic [lg_num_lce_lp-1:0]                                      transfer_lce_o
    , output logic [lg_lce_assoc_lp-1:0]                                    transfer_lce_way_o
 
    , output logic [`bp_cce_coh_bits-1:0]                                   next_coh_state_o
-
-   , output logic [block_size_in_bits_lp-1:0]                              cache_block_data_o
 
    , output logic [`bp_cce_inst_num_flags-1:0]                             flags_o
 
@@ -118,25 +101,25 @@ module bp_cce_reg
 
    , output logic [`bp_lce_cce_ack_type_width-1:0]                         ack_type_o
 
-   , output logic [way_group_width_lp-1:0]                                 way_group_o
-
    , output logic [num_lce_p-1:0]                                          sharers_hits_o
    , output logic [num_lce_p-1:0][lg_lce_assoc_lp-1:0]                     sharers_ways_o
    , output logic [num_lce_p-1:0][`bp_cce_coh_bits-1:0]                    sharers_coh_states_o
 
    , output logic [`bp_lce_cce_nc_req_size_width-1:0]                      nc_req_size_o
    , output logic [lce_req_data_width_p-1:0]                               nc_data_o
+
+   , output logic                                                          lru_cached_excl_o
   );
 
   wire unused = dir_pending_v_o_i;
 
   // Define structure variables for input queues
-  `declare_bp_lce_cce_req_s(num_cce_p, num_lce_p, addr_width_p, lce_assoc_p, lce_req_data_width_p);
-  `declare_bp_lce_cce_resp_s(num_cce_p, num_lce_p, addr_width_p);
-  `declare_bp_lce_cce_data_resp_s(num_cce_p, num_lce_p, addr_width_p, block_size_in_bits_lp);
+  `declare_bp_lce_cce_req_s(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, lce_req_data_width_p);
+  `declare_bp_lce_cce_resp_s(num_cce_p, num_lce_p, paddr_width_p);
+  `declare_bp_lce_cce_data_resp_s(num_cce_p, num_lce_p, paddr_width_p, block_size_in_bits_lp);
 
 
-  `declare_bp_me_if(addr_width_p, block_size_in_bits_lp, num_lce_p, lce_assoc_p);
+  `declare_bp_me_if(paddr_width_p, block_size_in_bits_lp, num_lce_p, lce_assoc_p);
 
   bp_lce_cce_req_s lce_req_s_i;
   bp_lce_cce_resp_s lce_resp_s_i;
@@ -157,27 +140,22 @@ module bp_cce_reg
   // Registers
 
   logic [lg_num_lce_lp-1:0] req_lce_r, req_lce_n;
-  logic [addr_width_p-1:0] req_addr_r, req_addr_n;
+  logic [paddr_width_p-1:0] req_addr_r, req_addr_n;
   logic [lg_lce_assoc_lp-1:0] req_addr_way_r, req_addr_way_n;
-  logic [`bp_cce_coh_bits-1:0] req_coh_state_r, req_coh_state_n;
 
   logic [lg_lce_assoc_lp-1:0] lru_way_r, lru_way_n;
-  logic [addr_width_p-1:0] lru_addr_r, lru_addr_n;
+  logic [paddr_width_p-1:0] lru_addr_r, lru_addr_n;
 
   logic [lg_num_lce_lp-1:0] transfer_lce_r, transfer_lce_n;
   logic [lg_lce_assoc_lp-1:0] transfer_lce_way_r, transfer_lce_way_n;
 
   logic [`bp_cce_coh_bits-1:0] next_coh_state_r, next_coh_state_n;
 
-  logic [block_size_in_bits_lp-1:0] cache_block_data_r, cache_block_data_n;
-
   logic [`bp_cce_inst_num_flags-1:0] flags_r, flags_n;
 
   logic [`bp_cce_inst_num_gpr-1:0][`bp_cce_inst_gpr_width-1:0] gpr_r, gpr_n;
 
   logic [`bp_lce_cce_ack_type_width-1:0] ack_type_r, ack_type_n;
-
-  logic [way_group_width_lp-1:0] way_group_r, way_group_n;
 
   logic [num_lce_p-1:0] sharers_hits_r, sharers_hits_n;
   logic [num_lce_p-1:0][lg_lce_assoc_lp-1:0] sharers_ways_r, sharers_ways_n;
@@ -186,19 +164,14 @@ module bp_cce_reg
   logic [`bp_lce_cce_nc_req_size_width-1:0] nc_req_size_r, nc_req_size_n;
   logic [lce_req_data_width_p-1:0] nc_data_r, nc_data_n;
 
+  logic lru_cached_excl_r, lru_cached_excl_n;
+
   always_comb
   begin
     req_lce_o = req_lce_r;
     req_addr_o = req_addr_r;
-    req_tag_o = req_addr_r[addr_width_p-1 -: tag_width_lp];
+    req_tag_o = req_addr_r[paddr_width_p-1 -: tag_width_lp];
     req_addr_way_o = req_addr_way_r;
-    // coherence state from directory comes from synchronous RAM so forward new value to output
-    // when writing from directory output
-    if (dir_entry_v_o_i) begin
-      req_coh_state_o = dir_coh_state_o_i;
-    end else begin
-      req_coh_state_o = req_coh_state_r;
-    end
 
     lru_way_o = lru_way_r;
     lru_addr_o = lru_addr_r;
@@ -208,28 +181,30 @@ module bp_cce_reg
 
     next_coh_state_o = next_coh_state_r;
 
-    cache_block_data_o = cache_block_data_r;
-
     flags_o = flags_r;
 
     gpr_o = gpr_r;
 
     ack_type_o = ack_type_r;
 
-    // Way group comes from synchronous RAM in directory, so forward new value to output when
-    // writing from directory output
-    if (dir_way_group_v_o_i) begin
-      way_group_o = way_group_n;
+    // Bypass sharers information being written to registers when it is being written.
+    // TODO: can eliminate if critical path-y
+    // This allows a one cycle reduction of the directory read operation latency
+    // If bypassing is removed, need to set busy signal in FINISH_READ in directory
+    if (dir_sharers_v_i) begin
+      sharers_hits_o = dir_sharers_hits_i;
+      sharers_ways_o = dir_sharers_ways_i;
+      sharers_coh_states_o = dir_sharers_coh_states_i;
     end else begin
-      way_group_o = way_group_r;
+      sharers_hits_o = sharers_hits_r;
+      sharers_ways_o = sharers_ways_r;
+      sharers_coh_states_o = sharers_coh_states_r;
     end
-
-    sharers_hits_o = sharers_hits_r;
-    sharers_ways_o = sharers_ways_r;
-    sharers_coh_states_o = sharers_coh_states_r;
 
     nc_req_size_o = nc_req_size_r;
     nc_data_o = nc_data_r;
+
+    lru_cached_excl_o = lru_cached_excl_r;
   end
 
   int j;
@@ -275,16 +250,6 @@ module bp_cce_reg
       end
     endcase
 
-    // Req Coh State
-    // written by either RDE or GAD
-    if (decoded_inst_i.gad_op_w_v) begin // GAD has priority over RDE
-      req_coh_state_n = gad_coh_state_i;
-    end else if (dir_entry_v_o_i) begin
-      req_coh_state_n = dir_coh_state_o_i;
-    end else begin
-      req_coh_state_n = '0;
-    end
-
     // LRU Way
     case (decoded_inst_i.lru_way_sel)
       e_lru_way_sel_lce_req: begin
@@ -304,14 +269,6 @@ module bp_cce_reg
       end
     endcase
 
-    // LRU Addr
-    if (decoded_inst_i.gad_op_w_v) begin
-      lru_addr_n = {gad_lru_tag_i, req_addr_r[lg_block_size_in_bytes_lp +: lg_lce_sets_lp],
-                    {lg_block_size_in_bytes_lp{1'b0}}};
-    end else begin
-      lru_addr_n = '0;
-    end
-
     // Transfer LCE and Transfer LCE Way
     case (decoded_inst_i.transfer_lce_sel)
       e_tr_lce_sel_logic: begin
@@ -325,19 +282,6 @@ module bp_cce_reg
       default: begin
         transfer_lce_n = '0;
         transfer_lce_way_n = '0;
-      end
-    endcase
-
-    // Cache block data
-    case (decoded_inst_i.cache_block_data_sel)
-      e_data_sel_lce_data_resp: begin
-        cache_block_data_n = lce_data_resp_s_i.data;
-      end
-      e_data_sel_mem_data_resp: begin
-        cache_block_data_n = mem_data_resp_s_i.data;
-      end
-      default: begin
-        cache_block_data_n = '0;
       end
     endcase
 
@@ -429,6 +373,7 @@ module bp_cce_reg
         flags_n[e_flag_sel_uf] = gad_upgrade_flag_i;
         flags_n[e_flag_sel_if] = gad_invalidate_flag_i;
         flags_n[e_flag_sel_ef] = gad_exclusive_flag_i;
+        flags_n[e_flag_sel_cf] = gad_cached_flag_i;
       end
       e_pruief_imm0: begin
         flags_n[e_flag_sel_pf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
@@ -436,6 +381,7 @@ module bp_cce_reg
         flags_n[e_flag_sel_uf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
         flags_n[e_flag_sel_if] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
         flags_n[e_flag_sel_ef] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
+        flags_n[e_flag_sel_cf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
       end
       default: begin
         flags_n[e_flag_sel_pf] = '0;
@@ -443,6 +389,7 @@ module bp_cce_reg
         flags_n[e_flag_sel_uf] = '0;
         flags_n[e_flag_sel_if] = '0;
         flags_n[e_flag_sel_ef] = '0;
+        flags_n[e_flag_sel_cf] = '0;
       end
     endcase
 
@@ -466,13 +413,15 @@ module bp_cce_reg
     // Next Coh State
     next_coh_state_n = decoded_inst_i.imm[`bp_cce_coh_bits-1:0];
 
-    // Directory Way Group - comes from directory
-    way_group_n = dir_way_group_o_i;
+    // Sharers stuff - comes from directory
+    sharers_hits_n = dir_sharers_hits_i;
+    sharers_ways_n = dir_sharers_ways_i;
+    sharers_coh_states_n = dir_sharers_coh_states_i;
 
-    // Sharers stuff - comes from GAD
-    sharers_hits_n = gad_sharers_hits_i;
-    sharers_ways_n = gad_sharers_ways_i;
-    sharers_coh_states_n = gad_sharers_coh_states_i;
+    lru_cached_excl_n = dir_lru_cached_excl_i;
+    // LRU Addr
+    lru_addr_n = {dir_lru_tag_i, req_addr_r[lg_block_size_in_bytes_lp +: lg_lce_sets_lp],
+                  {lg_block_size_in_bytes_lp{1'b0}}};
 
     // Uncached data
     if (decoded_inst_i.nc_data_lce_req) begin
@@ -492,17 +441,14 @@ module bp_cce_reg
       req_lce_r <= '0;
       req_addr_r <= '0;
       req_addr_way_r <= '0;
-      req_coh_state_r <= '0;
       lru_way_r <= '0;
       lru_addr_r <= '0;
       transfer_lce_r <= '0;
       transfer_lce_way_r <= '0;
       next_coh_state_r <= '0;
-      cache_block_data_r <= '0;
       flags_r <= '0;
       gpr_r <= '0;
       ack_type_r <= '0;
-      way_group_r <= '0;
       sharers_hits_r <= '0;
       sharers_ways_r <= '0;
       sharers_coh_states_r <= '0;
@@ -514,21 +460,12 @@ module bp_cce_reg
       if (decoded_inst_i.req_addr_way_w_v) begin
         req_addr_way_r <= req_addr_way_n;
       end
-      if (decoded_inst_i.gad_op_w_v || dir_entry_v_o_i) begin
-        req_coh_state_r <= req_coh_state_n;
-      end
       if (decoded_inst_i.lru_way_w_v) begin
         lru_way_r <= lru_way_n;
-      end
-      if (decoded_inst_i.gad_op_w_v) begin
-        lru_addr_r <= lru_addr_n;
       end
       if (decoded_inst_i.transfer_lce_w_v) begin
         transfer_lce_r <= transfer_lce_n;
         transfer_lce_way_r <= transfer_lce_way_n;
-      end
-      if (decoded_inst_i.cache_block_data_w_v) begin
-        cache_block_data_r <= cache_block_data_n;
       end
       if (decoded_inst_i.ack_type_w_v) begin
         ack_type_r <= ack_type_n;
@@ -553,16 +490,16 @@ module bp_cce_reg
         next_coh_state_r <= next_coh_state_n;
       end
 
-      // Dir Way Group
-      if (dir_way_group_v_o_i) begin
-        way_group_r <= way_group_n;
-      end
-
       // Sharers Info
-      if (decoded_inst_i.gad_op_w_v) begin
+      if (dir_sharers_v_i) begin
         sharers_hits_r <= sharers_hits_n;
         sharers_ways_r <= sharers_ways_n;
         sharers_coh_states_r <= sharers_coh_states_n;
+      end
+
+      if (dir_lru_v_i) begin
+        lru_cached_excl_r <= lru_cached_excl_n;
+        lru_addr_r <= lru_addr_n;
       end
 
       // Uncached data and request size

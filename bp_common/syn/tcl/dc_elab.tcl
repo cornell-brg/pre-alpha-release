@@ -64,7 +64,6 @@ set BP_BE_DIR        $::env(BP_BE_DIR)
 set BP_ME_DIR        $::env(BP_ME_DIR)
 set BP_COMMON_DIR    $::env(BP_COMMON_DIR)
 
-set BSG_CADENV_DIR   $::env(BSG_CADENV_DIR)
 set BSG_IP_CORES_DIR $::env(BSG_IP_CORES_DIR)
 
 set SYN_PATH $::env(SYN_PATH)
@@ -118,6 +117,9 @@ if { ![analyze -format sverilog -vcs "-f flist.vcs"] } {
 #========================
 # ELABORATE
 #========================
+
+# Add a warning ELAB-395 if memory devices are inferred as latches.
+set_app_var hdlin_check_no_latch true
 
 if { ![elaborate ${DESIGN_NAME} -param ${param_str}] } {
   exit_failed
