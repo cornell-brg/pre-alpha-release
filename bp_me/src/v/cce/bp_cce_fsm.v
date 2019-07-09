@@ -216,9 +216,10 @@ module bp_cce_fsm
   logic gad_replacement_flag_lo;
   logic gad_upgrade_flag_lo;
   logic gad_invalidate_flag_lo;
-  logic gad_exclusive_flag_lo;
   logic gad_cached_flag_lo;
-  logic gad_error_lo;
+  logic gad_cached_exclusive_flag_lo;
+  logic gad_cached_owned_flag_lo;
+  logic gad_cached_dirty_flag_lo;
 
   // Directory
   bp_cce_fsm_dir
@@ -288,10 +289,10 @@ module bp_cce_fsm
       ,.replacement_flag_o(gad_replacement_flag_lo)
       ,.upgrade_flag_o(gad_upgrade_flag_lo)
       ,.invalidate_flag_o(gad_invalidate_flag_lo)
-      ,.exclusive_flag_o(gad_exclusive_flag_lo)
       ,.cached_flag_o(gad_cached_flag_lo)
-
-      ,.error_o(gad_error_lo)
+      ,.cached_exclusive_flag_o(gad_cached_exclusive_flag_lo)
+      ,.cached_owned_flag_o(gad_cached_owned_flag_lo)
+      ,.cached_dirty_flag_o(gad_cached_dirty_flag_lo)
       );
 
 
@@ -551,7 +552,7 @@ module bp_cce_fsm
             // transaction is now complete, so the MSHR is cleared and the CCE stays in the READY
             // state. Otherwise, the MSHR is restored and the next state is determined by the
             // flags in the MSHR returned from memory.
-            state_n = (mem_resp_mshr.flags[e_flag_sel_rwbf])
+            state_n = (mem_resp_mshr.flags[e_flag_sel_rf])
                       ? (mem_resp_mshr.flags[e_flag_sel_tf])
                         ? TRANSFER_CMD
                         : READ_MEM
@@ -560,8 +561,8 @@ module bp_cce_fsm
             mshr_n = (state_n == READY)
                      ? '0
                      : mem_resp_mshr;
-            // clear the replacement writeback flag
-            mshr_n.flags[e_flag_sel_rwbf] = 1'b0;
+            // clear the replacement flag
+            mshr_n.flags[e_flag_sel_rf] = 1'b0;
           end
         end else if (lce_req_v_i) begin
           mshr_n.lce_id = lce_req.src_id;
@@ -639,25 +640,26 @@ module bp_cce_fsm
 
           mshr_n.way_id = gad_req_addr_way_lo;
 
+          mshr_n.flags[e_flag_sel_tf] = gad_transfer_flag_lo;
           mshr_n.flags[e_flag_sel_rf] = gad_replacement_flag_lo;
-          mshr_n.flags[e_flag_sel_rwbf] = gad_replacement_flag_lo;
           mshr_n.flags[e_flag_sel_uf] = gad_upgrade_flag_lo;
           mshr_n.flags[e_flag_sel_if] = gad_invalidate_flag_lo;
-          mshr_n.flags[e_flag_sel_ef] = gad_exclusive_flag_lo;
           mshr_n.flags[e_flag_sel_cf] = gad_cached_flag_lo;
-          mshr_n.flags[e_flag_sel_tf] = gad_transfer_flag_lo;
+          mshr_n.flags[e_flag_sel_cef] = gad_cached_exclusive_flag_lo;
+          mshr_n.flags[e_flag_sel_cof] = gad_cached_owned_flag_lo;
+          mshr_n.flags[e_flag_sel_cdf] = gad_cached_dirty_flag_lo;
 
           mshr_n.tr_lce_id = gad_transfer_lce_lo;
           mshr_n.tr_way_id = gad_transfer_lce_way_lo;
 
           mshr_n.next_coh_state =
             (mshr_r.flags[e_flag_sel_rqf])
-            ? e_MESI_M
+            ? e_COH_M
             : (mshr_r.flags[e_flag_sel_nerf])
-              ? e_MESI_S
+              ? e_COH_S
               : (gad_cached_flag_lo)
-                ? e_MESI_S
-                : e_MESI_E;
+                ? e_COH_S
+                : e_COH_E;
 
           state_n = WRITE_NEXT_STATE;
         end
@@ -757,8 +759,8 @@ module bp_cce_fsm
                     ? TRANSFER_CMD
                     : READ_MEM;
 
-          // clear the replacement writeback flag
-          mshr_n.flags[e_flag_sel_rwbf] = 1'b0;
+          // clear the replacement flag
+          mshr_n.flags[e_flag_sel_rf] = 1'b0;
 
         end else if (~(mem_data_resp_v_i & lce_data_cmd_ready_i)) begin
         // Mem Data Cmd needs to write pending bit, so only send if Mem Data Resp / LCE Data Cmd is

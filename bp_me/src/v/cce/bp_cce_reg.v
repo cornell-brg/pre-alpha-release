@@ -71,15 +71,15 @@ module bp_cce_reg
    , input                                                                 gad_replacement_flag_i
    , input                                                                 gad_upgrade_flag_i
    , input                                                                 gad_invalidate_flag_i
-   , input                                                                 gad_exclusive_flag_i
    , input                                                                 gad_cached_flag_i
+   , input                                                                 gad_cached_exclusive_flag_i
+   , input                                                                 gad_cached_owned_flag_i
+   , input                                                                 gad_cached_dirty_flag_i
 
    // Register value outputs
    , output logic [mshr_width_lp-1:0]                                      mshr_o
 
    , output logic [`bp_cce_inst_num_gpr-1:0][`bp_cce_inst_gpr_width-1:0]   gpr_o
-
-   , output logic [`bp_lce_cce_ack_type_width-1:0]                         ack_type_o
 
    , output logic [lce_req_data_width_p-1:0]                               nc_data_o
   );
@@ -105,13 +105,11 @@ module bp_cce_reg
   bp_cce_mshr_s mshr_r, mshr_n;
 
   logic [`bp_cce_inst_num_gpr-1:0][`bp_cce_inst_gpr_width-1:0] gpr_r, gpr_n;
-  logic [`bp_lce_cce_ack_type_width-1:0] ack_type_r, ack_type_n;
   logic [lce_req_data_width_p-1:0] nc_data_r, nc_data_n;
   
   // Output register values
   assign mshr_o = mshr_r;
   assign gpr_o = gpr_r;
-  assign ack_type_o = ack_type_r;
   assign nc_data_o = nc_data_r;
 
   // Memory Response Message Payload (e.g., MSHR values to restore to MSHR register)
@@ -121,15 +119,14 @@ module bp_cce_reg
   always_comb
   begin
 
-    // ACK Type
-    ack_type_n = resp_ack_type_i;
-
     // GPR
     for (int i = 0; i < `bp_cce_inst_num_gpr; i=i+1) begin
       if (decoded_inst_i.alu_dst_w_v & decoded_inst_i.gpr_w_mask[i]) begin
         gpr_n[i] = alu_res_i;
       end else if (decoded_inst_i.mov_dst_w_v & decoded_inst_i.gpr_w_mask[i]) begin
         gpr_n[i] = mov_src_i;
+     end else if (decoded_inst_i.ack_type_w_v & decoded_inst_i.gpr_w_mask[i]) begin
+        gpr_n[i] = {'0, resp_ack_type_i};
       end else begin
         gpr_n[i] = '0;
       end
@@ -205,7 +202,7 @@ module bp_cce_reg
       endcase
 
       // Flags
-      mshr_n.flags[e_flag_sel_pcf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
+      //mshr_n.flags[e_flag_sel_pcf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
 
       case (decoded_inst_i.rqf_sel)
         e_rqf_lce_req: begin
@@ -277,30 +274,31 @@ module bp_cce_reg
           mshr_n.flags[e_flag_sel_rf] = gad_replacement_flag_i;
           mshr_n.flags[e_flag_sel_uf] = gad_upgrade_flag_i;
           mshr_n.flags[e_flag_sel_if] = gad_invalidate_flag_i;
-          mshr_n.flags[e_flag_sel_ef] = gad_exclusive_flag_i;
           mshr_n.flags[e_flag_sel_cf] = gad_cached_flag_i;
+          mshr_n.flags[e_flag_sel_cef] = gad_cached_exclusive_flag_i;
+          mshr_n.flags[e_flag_sel_cof] = gad_cached_owned_flag_i;
+          mshr_n.flags[e_flag_sel_cdf] = gad_cached_dirty_flag_i;
         end
         e_pruief_imm0: begin
           mshr_n.flags[e_flag_sel_pf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
           mshr_n.flags[e_flag_sel_rf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
           mshr_n.flags[e_flag_sel_uf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
           mshr_n.flags[e_flag_sel_if] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
-          mshr_n.flags[e_flag_sel_ef] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
           mshr_n.flags[e_flag_sel_cf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
+          mshr_n.flags[e_flag_sel_cef] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
+          mshr_n.flags[e_flag_sel_cof] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
+          mshr_n.flags[e_flag_sel_cdf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
         end
         default: begin
           mshr_n.flags[e_flag_sel_pf] = '0;
           mshr_n.flags[e_flag_sel_rf] = '0;
           mshr_n.flags[e_flag_sel_uf] = '0;
           mshr_n.flags[e_flag_sel_if] = '0;
-          mshr_n.flags[e_flag_sel_ef] = '0;
           mshr_n.flags[e_flag_sel_cf] = '0;
+          mshr_n.flags[e_flag_sel_cef] = '0;
+          mshr_n.flags[e_flag_sel_cof] = '0;
+          mshr_n.flags[e_flag_sel_cdf] = '0;
         end
-      endcase
-
-      case (decoded_inst_i.rwbf_sel)
-        e_rwbf_imm0: mshr_n.flags[e_flag_sel_rwbf] = decoded_inst_i.imm[`bp_cce_inst_flag_imm_bit];
-        default: mshr_n.flags[e_flag_sel_rwbf] = '0;
       endcase
 
       // Next Coh State
@@ -321,7 +319,6 @@ module bp_cce_reg
     if (reset_i) begin
       mshr_r <= '0;
       gpr_r <= '0;
-      ack_type_r <= '0;
       nc_data_r <= '0;
     end else begin
       // MSHR writes
@@ -362,11 +359,6 @@ module bp_cce_reg
         if (decoded_inst_i.nc_req_size_w_v) begin
           mshr_r.nc_req_size <= mshr_n.nc_req_size;
         end
-      end
-
-      // Ack Type
-      if (decoded_inst_i.ack_type_w_v) begin
-        ack_type_r <= ack_type_n;
       end
 
       // GPR

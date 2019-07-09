@@ -205,6 +205,7 @@ typedef enum bit [2:0]
  *   may not be dirty in the LCE.
  * e_MESI_M has the same meaning as e_MESI_E, but the CCE knows the block is dirty
  */
+/*
 typedef enum bit [1:0] 
 {
   e_MESI_I                   = 2'b00
@@ -212,11 +213,13 @@ typedef enum bit [1:0]
   ,e_MESI_E                  = 2'b10
   ,e_MESI_M                  = 2'b11
 } bp_cce_coh_mesi_e;
+*/
 
 /*
  * bp_cce_coh_vi_e defines the coherence states for a Valid/Invalid style protocol.
  * In VI, the V state is equivalent to e_MESI_E, and I is the same as e_MESI_I.
  */
+/*
 typedef enum bit [1:0] 
 {
   e_VI_I                     = 2'b00
@@ -228,8 +231,37 @@ typedef union packed
   bp_cce_coh_vi_e            vi;
   bp_cce_coh_mesi_e          mesi;
 }  bp_cce_coh_u;
+*/
 
-`define bp_cce_coh_bits $bits(bp_cce_coh_u)
+//`define bp_cce_coh_bits $bits(bp_cce_coh_u)
+
+/*
+ * bp_cce_coh_states_e defines the coherence states available in BlackParrot. Each bit represents
+ * a property of the cache block as defined below:
+ * 0: Shared (not Exclusive)
+ * 1: Owned
+ * 2: Potentially Dirty
+ *
+ * These properties are derived from "A Primer on Memory Consistency and Cache Coherence", and
+ * they allow an easy definition for the common MOESIF coherence states.
+ */
+typedef enum bit [2:0] 
+{
+  e_COH_I                   = 3'b000 // Invalid
+  ,e_COH_S                  = 3'b001 // Shared - clean, not owned, shared (not exclusive)
+  ,e_COH_E                  = 3'b010 // Exclusive - clean, owned, not shared (exclusive)
+  ,e_COH_F                  = 3'b011 // Forward - clean, owned, shared (not exclusive)
+  //                          3'b100 - potentially dirty, not owned, not shared (exclusive)
+  //                          3'b101 - potentially dirty, not owned, shared (not exclusive)
+  ,e_COH_M                  = 3'b110 // Modified - potentially dirty, owned, not shared (exclusive)
+  ,e_COH_O                  = 3'b111 // Owned - potentially dirty, owned, shared (not exclusive)
+} bp_cce_coh_states_e;
+
+`define bp_cce_coh_shared_bit 0
+`define bp_cce_coh_owned_bit 1
+`define bp_cce_coh_dirty_bit 2
+
+`define bp_cce_coh_bits $bits(bp_cce_coh_states_e)
 
 /*
  * bp_cce_lce_cmd_s defines a command sent by a CCE to and LCE

@@ -50,8 +50,8 @@ movi N_LCE r1
 movi SYNC_ACK r3
 sync_top: bge r0 r1 ready
 pushq lceCmd SYNC r0
-popq lceResp
-bne r3 ackType error
+popq lceResp r4
+bne r3 r4 error
 inc r0
 bi sync_top
 
@@ -63,11 +63,11 @@ bqr memResp mem_resp
 bqr lceReq lce_req
 stall
 
-ack_pop: popq lceResp
+ack_pop: popq lceResp r4
 movi COH_ACK r0
-beq r0 ackType ready
+beq r0 r4 ready
 movi TR_ACK r1
-beq r1 ackType ready
+beq r1 r4 ready
 # coming from the ready state, the CCE should only receive COH or TR acks
 bi error
 
@@ -75,7 +75,7 @@ bi error
 # A memory response returns after a replacement writeback or a transfer writeback
 mem_resp: popq memResp
 bf ucf uc_mem_resp
-bf rwbf transfer_check
+bf rf transfer_check
 bi ready
 
 # LCE Request Routine
@@ -122,10 +122,10 @@ inv_inc_lce: inc r0
 bi inv_top
 inv_ack_top: bz r2 upgrade_check
 # pop the lce response
-inv_ack_pop: popq lceResp
+inv_ack_pop: popq lceResp r4
 # check the response type; if it is an invalidation, decrement the counter and continue looping
 # non invalidation acks get popped, and then the PC jumps back to wait for invalidation acks
-bne r3 ackType inv_ack_pop
+bne r3 r4 inv_ack_pop
 dec r2
 bi inv_ack_top
 
@@ -147,10 +147,8 @@ replace_check: bfz rf transfer_check
 # Replacement Routine
 replace: pushq lceCmd WB req lru lru
 poph lceDataResp
-sf rwbf
 pushq memDataCmd lru
 popq lceDataResp
-sfz rwbf
 bi ready
 
 # Transfer Check
@@ -164,7 +162,7 @@ pushq lceCmd WB tr req tr
 poph lceDataResp
 bf nwbf complete_nwb_transfer
 # perform the transfer WB to mem
-sfz rwbf
+sfz rf
 pushq memDataCmd req
 popq lceDataResp
 bi ready

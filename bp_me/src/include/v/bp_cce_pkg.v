@@ -46,6 +46,6 @@ package bp_cce_pkg;
      +`bp_cce_coh_bits+`bp_cce_inst_num_flags+`bp_lce_cce_nc_req_size_width)
 
   // MSHR width for BP is:
-  // 2*LOG(num_lce) + (9 + 78 + 2 + 15 + 2) = 2*LOG(num_lce) + 106
+  // 2*LOG(num_lce) + (9 + 78 + 3 + 15 + 2) = 2*LOG(num_lce) + 107
 
 endpackage : bp_cce_pkg

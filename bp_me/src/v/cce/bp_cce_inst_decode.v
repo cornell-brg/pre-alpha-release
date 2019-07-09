@@ -111,40 +111,75 @@ module bp_cce_inst_decode
       decoded_inst_v_o = '0;
     end else begin
       decoded_inst_v_o = inst_v_i;
+      decoded_inst_o.op = op;
       decoded_inst_o.minor_op_u = minor_op_u;
 
       case (op)
         e_op_alu: begin
-          decoded_inst_o.alu_dst_w_v = 1'b1;
           decoded_inst_o.alu_v = 1'b1;
-          decoded_inst_o.imm = alu_op_s.imm;
-          decoded_inst_o.dst = alu_op_s.dst;
-          decoded_inst_o.src_a = alu_op_s.src_a;
-          decoded_inst_o.src_b = alu_op_s.src_b;
+          // All ALU arithmetic operations write a GPR destination
+          decoded_inst_o.alu_dst_w_v = 1'b1;
+          decoded_inst_o.imm[0+:`bp_cce_inst_imm16_width] = alu_op_s.imm;
+          // Dst and Src fields are GPRs or immediate (src only)
+          decoded_inst_o.dst.gpr = alu_op_s.dst;
+          decoded_inst_o.src_a.gpr = alu_op_s.src_a;
+          decoded_inst_o.src_b.gpr = alu_op_s.src_b;
+
+          decoded_inst_o.dst_sel = e_dst_sel_gpr;
+          decoded_inst_o.src_a_sel = e_src_sel_gpr;
+          decoded_inst_o.src_b_sel = e_src_sel_gpr;
 
         end
         e_op_branch: begin
-          decoded_inst_o.alu_v = 1'b1;
+          decoded_inst_o.branch_v = 1'b1;
           // Next PC computation
-          decoded_inst_o.imm = branch_op_s.target;
+          decoded_inst_o.imm[0+:`bp_cce_inst_imm16_width] = branch_op_s.imm;
           pc_branch_target_o = branch_op_s.target[0+:inst_addr_width_p];
-          decoded_inst_o.src_a = branch_op_s.src_a;
-          decoded_inst_o.src_b = branch_op_s.src_b;
+
+          // Default to GPR sources
+          decoded_inst_o.src_a.gpr = branch_op_s.src_a.gpr;
+          decoded_inst_o.src_b.gpr = branch_op_s.src_b.gpr;
+          decoded_inst_o.src_a_sel = e_src_sel_gpr;
+          decoded_inst_o.src_b_sel = e_src_sel_gpr;
+
+          // Flag ops use flag as source A, immediate of 1 or 0 as source B
+          if (minor_op_u.branch_minor_op == e_bf_op) begin
+            decoded_inst_o.src_a.flag = branch_op_s.src_a.flag;
+            decoded_inst_o.src_b_sel = e_src_sel_flag;
+
+          // Branch if queue.ready set, source B is immediate set to 1
+          end else if (minor_op_u.branch_minor_op == e_beqi_op) begin
+            decoded_inst_o.src_a.special = branch_op_s.src_a.special;
+            decoded_inst_o.src_a_sel = e_src_sel_special;
+          end
 
         end
         e_op_move: begin
           decoded_inst_o.mov_dst_w_v = 1'b1;
-          // destination
-          decoded_inst_o.dst = mov_op_s.dst;
-          // source
-          // move operation
-          if (minor_op_u.mov_minor_op == e_mov_op) begin
-            decoded_inst_o.src_a = mov_op_s.src;
+
+          // Dst and Src fields are GPRs or immediate (src only) by default
+          decoded_inst_o.dst.gpr = mov_op_s.dst.gpr;
+          decoded_inst_o.src_a.gpr = mov_op_s.src.gpr;
+          decoded_inst_o.dst_sel = e_dst_sel_gpr;
+          decoded_inst_o.src_a_sel = e_src_sel_gpr;
+
+          // always set the immediate field
+          decoded_inst_o.imm[0+:`bp_cce_inst_imm32_width] = mov_op_s.imm;
+
+          // move flag to gpr - src_a is a flag
+          if (minor_op_u.mov_minor_op == e_movf_op) begin
+            decoded_inst_o.src_a.flag = mov_op_s.src.flag;
+            decoded_inst_o.src_a_sel = e_src_sel_flag;
           end
-          // move immediate operation
-          if (minor_op_u.mov_minor_op == e_movi_op) begin
-            decoded_inst_o.src_a = e_src_imm;
-            decoded_inst_o.imm = mov_op_s.imm;
+          // move special register to gpr - src_a is a special register
+          else if (minor_op_u.mov_minor_op == e_movsg_op) begin
+            decoded_inst_o.src_a.special = mov_op_s.src.special;
+            decoded_inst_o.src_a_sel = e_src_sel_special;
+          end
+          // move gpr to special register - dst is a special register
+          else if (minor_op_u.mov_minor_op == e_movsg_op) begin
+            decoded_inst_o.dst.special = mov_op_s.dst.special;
+            decoded_inst_o.dst_sel = e_dst_sel_special;
           end
 
         end
@@ -152,13 +187,16 @@ module bp_cce_inst_decode
 
           // source - always from immediate bit 0
           decoded_inst_o.src_a = e_src_imm;
-          decoded_inst_o.imm = {{(`bp_cce_inst_imm16_width-1){1'b0}}, flag_op_s.val};
+          decoded_inst_o.imm[0] = flag_op_s.val;
 
           // destination
           decoded_inst_o.dst = flag_op_s.dst;
           if (flag_op_s.dst == e_dst_rqf) begin
             decoded_inst_o.rqf_sel = e_rqf_imm0;
             decoded_inst_o.flag_mask_w_v = e_flag_rqf;
+          end else if (flag_op_s.dst == e_dst_ucf) begin
+            decoded_inst_o.rqf_sel = e_rqf_imm0;
+            decoded_inst_o.flag_mask_w_v = e_flag_ucf;
           end else if (flag_op_s.dst == e_dst_nerf) begin
             decoded_inst_o.nerldf_sel = e_nerldf_imm0;
             decoded_inst_o.flag_mask_w_v = e_flag_nerf;
@@ -174,9 +212,6 @@ module bp_cce_inst_decode
           end else if (flag_op_s.dst == e_dst_rf) begin
             decoded_inst_o.pruief_sel = e_pruief_imm0;
             decoded_inst_o.flag_mask_w_v = e_flag_rf;
-          end else if (flag_op_s.dst == e_dst_rwbf) begin
-            decoded_inst_o.rwbf_sel = e_rwbf_imm0;
-            decoded_inst_o.flag_mask_w_v = e_flag_rwbf;
           end else if (flag_op_s.dst == e_dst_pf) begin
             decoded_inst_o.pruief_sel = e_pruief_imm0;
             decoded_inst_o.flag_mask_w_v = e_flag_pf;
@@ -186,12 +221,18 @@ module bp_cce_inst_decode
           end else if (flag_op_s.dst == e_dst_if) begin
             decoded_inst_o.pruief_sel = e_pruief_imm0;
             decoded_inst_o.flag_mask_w_v = e_flag_if;
-          end else if (flag_op_s.dst == e_dst_ef) begin
-            decoded_inst_o.pruief_sel = e_pruief_imm0;
-            decoded_inst_o.flag_mask_w_v = e_flag_ef;
           end else if (flag_op_s.dst == e_dst_cf) begin
             decoded_inst_o.pruief_sel = e_pruief_imm0;
             decoded_inst_o.flag_mask_w_v = e_flag_cf;
+          end else if (flag_op_s.dst == e_dst_cef) begin
+            decoded_inst_o.pruief_sel = e_pruief_imm0;
+            decoded_inst_o.flag_mask_w_v = e_flag_cef;
+          end else if (flag_op_s.dst == e_dst_cof) begin
+            decoded_inst_o.pruief_sel = e_pruief_imm0;
+            decoded_inst_o.flag_mask_w_v = e_flag_cof;
+          end else if (flag_op_s.dst == e_dst_cdf) begin
+            decoded_inst_o.pruief_sel = e_pruief_imm0;
+            decoded_inst_o.flag_mask_w_v = e_flag_cdf;
           end
 
         end
@@ -224,8 +265,7 @@ module bp_cce_inst_decode
           decoded_inst_o.dir_w_cmd = minor_op_u;
           decoded_inst_o.dir_w_v = 1'b1;
 
-          decoded_inst_o.imm = {{(`bp_cce_inst_imm16_width-`bp_cce_coh_bits){1'b0}}
-                                , write_dir_op_s.imm};
+          decoded_inst_o.imm[0+:`bp_cce_coh_bits] = write_dir_op_s.imm;
 
           if (minor_op_u.write_dir_minor_op == e_wdp_op) begin
             decoded_inst_o.pending_w_v = 1'b1;
@@ -242,7 +282,8 @@ module bp_cce_inst_decode
             decoded_inst_o.tf_sel = e_tf_logic;
             decoded_inst_o.pruief_sel = e_pruief_logic;
             decoded_inst_o.flag_mask_w_v =
-              (e_flag_tf | e_flag_rf | e_flag_uf | e_flag_if | e_flag_ef | e_flag_cf);
+              (e_flag_tf | e_flag_rf | e_flag_uf | e_flag_if | e_flag_cf | e_flag_cef
+               | e_flag_cof | e_flag_cdf);
           end
           else if (minor_op_u.misc_minor_op == e_clm_op) begin
             decoded_inst_o.mshr_clear = 1'b1;
@@ -299,6 +340,7 @@ module bp_cce_inst_decode
               decoded_inst_o.mshr_restore = 1'b1;
 
             end else if (queue_op_s.op.popq.src_q == e_src_q_sel_lce_resp) begin
+              decoded_inst_o.dst = queue_op_s.op.popq.dst;
               decoded_inst_o.ack_type_w_v = 1'b1;
 
             end else if (queue_op_s.op.popq.src_q == e_src_q_sel_lce_req) begin
@@ -318,10 +360,15 @@ module bp_cce_inst_decode
       endcase
 
       // Write enables
-      gpr_w_v = decoded_inst_o.mov_dst_w_v | decoded_inst_o.alu_dst_w_v;
+      gpr_w_v = decoded_inst_o.mov_dst_w_v | decoded_inst_o.alu_dst_w_v
+                | decoded_inst_o.ack_type_w_v;
       decoded_inst_o.gpr_w_mask =
         {
-        (decoded_inst_o.dst == e_dst_r3) & (gpr_w_v)
+        (decoded_inst_o.dst == e_dst_r7) & (gpr_w_v)
+        ,(decoded_inst_o.dst == e_dst_r6) & (gpr_w_v)
+        ,(decoded_inst_o.dst == e_dst_r5) & (gpr_w_v)
+        ,(decoded_inst_o.dst == e_dst_r4) & (gpr_w_v)
+        ,(decoded_inst_o.dst == e_dst_r3) & (gpr_w_v)
         ,(decoded_inst_o.dst == e_dst_r2) & (gpr_w_v)
         ,(decoded_inst_o.dst == e_dst_r1) & (gpr_w_v)
         ,(decoded_inst_o.dst == e_dst_r0) & (gpr_w_v)

@@ -107,18 +107,21 @@ typedef enum {
 // Coherence States
 
 typedef enum {
-  e_MESI_I  = 0
-  ,e_MESI_S = 1
-  ,e_MESI_E = 2
-  ,e_MESI_M = 3
-} bp_cce_coh_mesi_e;
+  e_COH_I  = 0
+  ,e_COH_S = 1
+  ,e_COH_E = 2
+  ,e_COH_F = 3
+  // 4 = potentially dirty, not owned, not shared
+  // 5 = potentially dirty, not owned, shared
+  ,e_COH_M = 6
+  ,e_COH_O = 7
+} bp_cce_coh_states_e;
 
-typedef enum {
-  e_VI_I  = 0
-  ,e_VI_V = 2
-} bp_cce_coh_vi_e;
+#define bp_cce_coh_shared_bit 0
+#define bp_cce_coh_owned_bit 1
+#define bp_cce_coh_dirty_bit 2
 
-#define bp_cce_coh_bits 2
+#define bp_cce_coh_bits 3
 
 
 #define bp_lce_cce_req_width (LG_N_CCE+LG_N_LCE+bp_lce_cce_req_type_width \

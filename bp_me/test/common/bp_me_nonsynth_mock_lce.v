@@ -40,7 +40,7 @@ module tag_lookup
   genvar i;
   generate
   for (i = 0; i < lce_assoc_p; i=i+1) begin
-    assign hits[i] = ((tags[i].tag == ptag_i) && (tags[i].coh_st != e_MESI_I));
+    assign hits[i] = ((tags[i].tag == ptag_i) && (tags[i].coh_st != e_COH_I));
   end
   endgenerate
 
@@ -57,10 +57,9 @@ module tag_lookup
   // hit_o is set if tag matched and coherence state was any valid state
   assign hit_o = |hits;
   assign way_o = way_lo;
-  assign dirty_o = (tags[way_o].coh_st == e_MESI_M);
+  assign dirty_o = (tags[way_o].coh_st == e_COH_M);
   assign state_o = tags[way_o].coh_st;
-  // TODO: needs fixing?
-  assign lru_dirty_o = dirty_bits_i[lru_way_i];//(tags[lru_way_i].coh_st == e_MESI_M);
+  assign lru_dirty_o = dirty_bits_i[lru_way_i];
 
 endmodule
 
@@ -828,7 +827,7 @@ module bp_me_nonsynth_mock_lce
           cur_set_n = lce_cmd_r.addr[block_offset_bits_lp +: lg_lce_sets_lp];
           cur_way_n = lce_cmd_r.way_id;
           tag_w_n[cur_set_n][cur_way_n] = 1'b1;
-          tag_next_n[cur_set_n][cur_way_n].coh_st = e_MESI_I;
+          tag_next_n[cur_set_n][cur_way_n].coh_st = e_COH_I;
           tag_next_n[cur_set_n][cur_way_n].tag = lce_cmd_r.addr[paddr_width_p-1 -: ptag_width_lp];
 
           // send inv_ack next
@@ -906,7 +905,6 @@ module bp_me_nonsynth_mock_lce
           tag_next_n[cur_set_n][cur_way_n].coh_st = lce_cmd_r.state;
           tag_next_n[cur_set_n][cur_way_n].tag = lce_cmd_r.addr[paddr_width_p-1 -: ptag_width_lp];
 
-          // TODO: remove assert
           assert(lce_cmd_r.addr == mshr_r.paddr) else $error("set tag does not match mshr");
           // tag only comes in response to a miss, update the mshr
           mshr_n.tag_received = 1'b1;
@@ -995,9 +993,9 @@ module bp_me_nonsynth_mock_lce
           tr_pkt_v_o = 1'b1;
           tr_pkt_o[tr_ring_width_lp-1:dword_width_p] = '0;
 
-          if (mshr_r.store_op && tag_cur.coh_st == e_MESI_E) begin
+          if (mshr_r.store_op && tag_cur.coh_st == e_COH_E) begin
             tag_w_n[cur_set][cur_way] = 1'b1;
-            tag_next_n[cur_set][cur_way].coh_st = e_MESI_M;
+            tag_next_n[cur_set][cur_way].coh_st = e_COH_M;
             tag_next_n[cur_set][cur_way].tag = mshr_r.paddr[paddr_width_p-1 -: ptag_width_lp];
           end
 
@@ -1068,9 +1066,9 @@ module bp_me_nonsynth_mock_lce
           end else begin
             if (mshr_r.miss) begin
               lce_state_n = TR_CMD_ST_MISS;
-            end else if (~mshr_r.miss && ((tag_hit_state_r == e_MESI_M) || (tag_hit_state_r == e_MESI_E))) begin
+            end else if (~mshr_r.miss && ((tag_hit_state_r == e_COH_M) || (tag_hit_state_r == e_COH_E))) begin
               lce_state_n = TR_CMD_ST_HIT;
-            end else if (~mshr_r.miss && (tag_hit_state_r == e_MESI_S)) begin
+            end else if (~mshr_r.miss && (tag_hit_state_r == e_COH_S)) begin
               // upgrade counts as a miss - update the mshr
               mshr_n.miss = 1'b1;
               mshr_n.upgrade = 1'b1;
@@ -1155,9 +1153,9 @@ module bp_me_nonsynth_mock_lce
         end
         TR_CMD_ST_HIT_WR_TAG: begin
           // store hit on Exclusive forces upgrade to Modified
-          if (tag_cur.coh_st == e_MESI_E) begin
+          if (tag_cur.coh_st == e_COH_E) begin
             tag_w_n[cur_set][cur_way] = 1'b1;
-            tag_next_n[cur_set][cur_way].coh_st = e_MESI_M;
+            tag_next_n[cur_set][cur_way].coh_st = e_COH_M;
             tag_next_n[cur_set][cur_way].tag = cmd.paddr[paddr_width_p-1 -: ptag_width_lp];
             // set the dirty bit when writing to a block in Exclusive (first write)
             dirty_w_n[cur_set][cur_way] = 1'b1;

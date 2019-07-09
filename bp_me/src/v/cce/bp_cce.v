@@ -144,7 +144,6 @@ module bp_cce
   bp_cce_mode_e cce_mode_lo;
 
   // ALU signals
-  logic alu_v_lo;
   logic alu_branch_res_lo;
   logic [`bp_cce_inst_gpr_width-1:0] src_a, src_b, alu_res_lo;
 
@@ -194,9 +193,10 @@ module bp_cce
   logic gad_replacement_flag_lo;
   logic gad_upgrade_flag_lo;
   logic gad_invalidate_flag_lo;
-  logic gad_exclusive_flag_lo;
   logic gad_cached_flag_lo;
-  logic gad_error_lo;
+  logic gad_cached_exclusive_flag_lo;
+  logic gad_cached_owned_flag_lo;
+  logic gad_cached_dirty_flag_lo;
 
   // Register signals
   `declare_bp_cce_mshr_s(num_lce_p, lce_assoc_p, paddr_width_p);
@@ -213,7 +213,6 @@ module bp_cce
                             : bp_lce_cce_ack_type_e'('0);
 
   logic [`bp_cce_inst_num_gpr-1:0][`bp_cce_inst_gpr_width-1:0] gpr_r_lo;
-  logic [`bp_lce_cce_ack_type_width-1:0] ack_type_r_lo;
   logic [dword_width_p-1:0] nc_data_r_lo;
 
   // Message Unit Signals
@@ -262,7 +261,6 @@ module bp_cce
       ,.alu_branch_res_i(alu_branch_res_lo)
 
       ,.dir_busy_i(dir_busy_lo)
-      ,.gad_error_i(1'b0)
 
       ,.pc_stall_i(pc_stall_lo)
       ,.pc_branch_target_i(pc_branch_target_lo)
@@ -310,10 +308,11 @@ module bp_cce
       )
     alu
      (.v_i(decoded_inst_lo.alu_v)
+      ,.br_v_i(decoded_inst_lo.branch_v)
       ,.opd_a_i(src_a)
       ,.opd_b_i(src_b)
       ,.alu_op_i(decoded_inst_lo.minor_op_u.alu_minor_op)
-      ,.v_o(alu_v_lo)
+      ,.br_op_i(decoded_inst_lo.minor_op_u.branch_minor_op)
       ,.res_o(alu_res_lo)
       ,.branch_res_o(alu_branch_res_lo)
       );
@@ -401,10 +400,10 @@ module bp_cce
       ,.replacement_flag_o(gad_replacement_flag_lo)
       ,.upgrade_flag_o(gad_upgrade_flag_lo)
       ,.invalidate_flag_o(gad_invalidate_flag_lo)
-      ,.exclusive_flag_o(gad_exclusive_flag_lo)
       ,.cached_flag_o(gad_cached_flag_lo)
-
-      ,.error_o(gad_error_lo)
+      ,.cached_exclusive_flag_o(gad_cached_exclusive_flag_lo)
+      ,.cached_owned_flag_o(gad_cached_owned_flag_lo)
+      ,.cached_dirty_flag_o(gad_cached_dirty_flag_lo)
       );
 
   // Registers
@@ -441,13 +440,14 @@ module bp_cce
       ,.gad_replacement_flag_i(gad_replacement_flag_lo)
       ,.gad_upgrade_flag_i(gad_upgrade_flag_lo)
       ,.gad_invalidate_flag_i(gad_invalidate_flag_lo)
-      ,.gad_exclusive_flag_i(gad_exclusive_flag_lo)
       ,.gad_cached_flag_i(gad_cached_flag_lo)
+      ,.gad_cached_exclusive_flag_i(gad_cached_exclusive_flag_lo)
+      ,.gad_cached_owned_flag_i(gad_cached_owned_flag_lo)
+      ,.gad_cached_dirty_flag_i(gad_cached_dirty_flag_lo)
 
       // register state outputs
       ,.mshr_o(mshr)
       ,.gpr_o(gpr_r_lo)
-      ,.ack_type_o(ack_type_r_lo)
       ,.nc_data_o(nc_data_r_lo)
       );
 
@@ -691,34 +691,39 @@ module bp_cce
       e_src_r1: src_a = gpr_r_lo[e_gpr_r1];
       e_src_r2: src_a = gpr_r_lo[e_gpr_r2];
       e_src_r3: src_a = gpr_r_lo[e_gpr_r3];
-      e_src_rqf: src_a[0] = mshr.flags[e_flag_sel_rqf];
-      e_src_nerf: src_a[0] = mshr.flags[e_flag_sel_nerf];
-      e_src_ldf: src_a[0] = mshr.flags[e_flag_sel_ldf];
-      e_src_nwbf: src_a[0] = mshr.flags[e_flag_sel_nwbf];
-      e_src_tf: src_a[0] = mshr.flags[e_flag_sel_tf];
-      e_src_rf: src_a[0] = mshr.flags[e_flag_sel_rf];
-      e_src_rwbf: src_a[0] = mshr.flags[e_flag_sel_rwbf];
-      e_src_pf: src_a[0] = mshr.flags[e_flag_sel_pf];
-      e_src_uf: src_a[0] = mshr.flags[e_flag_sel_uf];
-      e_src_if: src_a[0] = mshr.flags[e_flag_sel_if];
-      e_src_ef: src_a[0] = mshr.flags[e_flag_sel_ef];
-      e_src_pcf: src_a[0] = mshr.flags[e_flag_sel_pcf];
-      e_src_ucf: src_a[0] = mshr.flags[e_flag_sel_ucf];
-      e_src_cf: src_a[0] = mshr.flags[e_flag_sel_cf];
-      e_src_lef: src_a[0] = mshr.flags[e_flag_sel_lef];
-      e_src_const_0: src_a = '0;
-      e_src_const_1: src_a[0] = 1'b1;
-      e_src_imm: src_a = decoded_inst_lo.imm;
-      e_src_req_lce: src_a[0+:lg_num_lce_lp] = mshr.lce_id;
-      e_src_ack_type: src_a[0+:`bp_lce_cce_ack_type_width] = ack_type_r_lo;
+      e_src_r4: src_a = gpr_r_lo[e_gpr_r4];
+      e_src_r5: src_a = gpr_r_lo[e_gpr_r5];
+      e_src_r6: src_a = gpr_r_lo[e_gpr_r6];
+      e_src_r7: src_a = gpr_r_lo[e_gpr_r7];
+
       e_src_sharers_hit_r0: src_a[0] = sharers_hits_r0;
-      e_src_cce_id: src_a[0+:lg_num_cce_lp] = cce_id_i;
+      e_src_req_lce: src_a[0+:lg_num_lce_lp] = mshr.lce_id;
+
       e_src_lce_req_ready: src_a[0] = lce_req_v_i;
       e_src_mem_resp_ready: src_a[0] = mem_resp_v_i;
       e_src_mem_data_resp_ready: src_a[0] = mem_data_resp_v_i;
       e_src_pending_ready: src_a = '0; // TODO: v2
       e_src_lce_resp_ready: src_a[0] = lce_resp_v_i;
       e_src_lce_data_resp_ready: src_a[0] = lce_data_resp_v_i;
+
+      e_src_rqf: src_a[0] = mshr.flags[e_flag_sel_rqf];
+      e_src_ucf: src_a[0] = mshr.flags[e_flag_sel_ucf];
+      e_src_nerf: src_a[0] = mshr.flags[e_flag_sel_nerf];
+      e_src_ldf: src_a[0] = mshr.flags[e_flag_sel_ldf];
+      e_src_pf: src_a[0] = mshr.flags[e_flag_sel_pf];
+      e_src_lef: src_a[0] = mshr.flags[e_flag_sel_lef];
+      e_src_cf: src_a[0] = mshr.flags[e_flag_sel_cf];
+      e_src_cef: src_a[0] = mshr.flags[e_flag_sel_cef];
+      e_src_cof: src_a[0] = mshr.flags[e_flag_sel_cof];
+      e_src_cdf: src_a[0] = mshr.flags[e_flag_sel_cdf];
+      e_src_tf: src_a[0] = mshr.flags[e_flag_sel_tf];
+      e_src_rf: src_a[0] = mshr.flags[e_flag_sel_rf];
+      e_src_uf: src_a[0] = mshr.flags[e_flag_sel_uf];
+      e_src_if: src_a[0] = mshr.flags[e_flag_sel_if];
+      e_src_nwbf: src_a[0] = mshr.flags[e_flag_sel_nwbf];
+
+      e_src_imm: src_a = decoded_inst_lo.imm;
+
       default: src_a = '0;
     endcase
 
@@ -729,34 +734,39 @@ module bp_cce
       e_src_r1: src_b = gpr_r_lo[e_gpr_r1];
       e_src_r2: src_b = gpr_r_lo[e_gpr_r2];
       e_src_r3: src_b = gpr_r_lo[e_gpr_r3];
-      e_src_rqf: src_b[0] = mshr.flags[e_flag_sel_rqf];
-      e_src_nerf: src_b[0] = mshr.flags[e_flag_sel_nerf];
-      e_src_ldf: src_b[0] = mshr.flags[e_flag_sel_ldf];
-      e_src_nwbf: src_b[0] = mshr.flags[e_flag_sel_nwbf];
-      e_src_tf: src_b[0] = mshr.flags[e_flag_sel_tf];
-      e_src_rf: src_b[0] = mshr.flags[e_flag_sel_rf];
-      e_src_rwbf: src_b[0] = mshr.flags[e_flag_sel_rwbf];
-      e_src_pf: src_b[0] = mshr.flags[e_flag_sel_pf];
-      e_src_uf: src_b[0] = mshr.flags[e_flag_sel_uf];
-      e_src_if: src_b[0] = mshr.flags[e_flag_sel_if];
-      e_src_ef: src_b[0] = mshr.flags[e_flag_sel_ef];
-      e_src_pcf: src_b[0] = mshr.flags[e_flag_sel_pcf];
-      e_src_ucf: src_b[0] = mshr.flags[e_flag_sel_ucf];
-      e_src_cf: src_b[0] = mshr.flags[e_flag_sel_cf];
-      e_src_lef: src_b[0] = mshr.flags[e_flag_sel_lef];
-      e_src_const_0: src_b = '0;
-      e_src_const_1: src_b[0] = 1'b1;
-      e_src_imm: src_b = decoded_inst_lo.imm;
-      e_src_req_lce: src_b[0+:lg_num_lce_lp] = mshr.lce_id;
-      e_src_ack_type: src_b[0+:`bp_lce_cce_ack_type_width] = ack_type_r_lo;
+      e_src_r4: src_b = gpr_r_lo[e_gpr_r4];
+      e_src_r5: src_b = gpr_r_lo[e_gpr_r5];
+      e_src_r6: src_b = gpr_r_lo[e_gpr_r6];
+      e_src_r7: src_b = gpr_r_lo[e_gpr_r7];
+
       e_src_sharers_hit_r0: src_b[0] = sharers_hits_r0;
-      e_src_cce_id: src_b[0+:lg_num_cce_lp] = cce_id_i;
+      e_src_req_lce: src_b[0+:lg_num_lce_lp] = mshr.lce_id;
+
       e_src_lce_req_ready: src_b[0] = lce_req_v_i;
       e_src_mem_resp_ready: src_b[0] = mem_resp_v_i;
       e_src_mem_data_resp_ready: src_b[0] = mem_data_resp_v_i;
       e_src_pending_ready: src_b = '0; // TODO: v2
       e_src_lce_resp_ready: src_b[0] = lce_resp_v_i;
       e_src_lce_data_resp_ready: src_b[0] = lce_data_resp_v_i;
+
+      e_src_rqf: src_b[0] = mshr.flags[e_flag_sel_rqf];
+      e_src_ucf: src_b[0] = mshr.flags[e_flag_sel_ucf];
+      e_src_nerf: src_b[0] = mshr.flags[e_flag_sel_nerf];
+      e_src_ldf: src_b[0] = mshr.flags[e_flag_sel_ldf];
+      e_src_pf: src_b[0] = mshr.flags[e_flag_sel_pf];
+      e_src_lef: src_b[0] = mshr.flags[e_flag_sel_lef];
+      e_src_cf: src_b[0] = mshr.flags[e_flag_sel_cf];
+      e_src_cef: src_b[0] = mshr.flags[e_flag_sel_cef];
+      e_src_cof: src_b[0] = mshr.flags[e_flag_sel_cof];
+      e_src_cdf: src_b[0] = mshr.flags[e_flag_sel_cdf];
+      e_src_tf: src_b[0] = mshr.flags[e_flag_sel_tf];
+      e_src_rf: src_b[0] = mshr.flags[e_flag_sel_rf];
+      e_src_uf: src_b[0] = mshr.flags[e_flag_sel_uf];
+      e_src_if: src_b[0] = mshr.flags[e_flag_sel_if];
+      e_src_nwbf: src_b[0] = mshr.flags[e_flag_sel_nwbf];
+
+      e_src_imm: src_b = decoded_inst_lo.imm;
+
       default: src_b = '0;
     endcase
   end
