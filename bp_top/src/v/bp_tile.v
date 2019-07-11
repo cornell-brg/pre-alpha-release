@@ -590,7 +590,7 @@ bsg_wormhole_router_adapter_out
    ,.ready_i(lce_data_resp_ready_lo)
    );
 
-bp_cce_top
+bp_cce_fsm_top
  #(.cfg_p(cfg_p)
    ,.cce_trace_p(cce_trace_p)
    )

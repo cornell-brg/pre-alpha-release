@@ -253,7 +253,7 @@ bind bp_be_top
      ,.program_finish_i(testbench.program_finish)
      );
 
-bind bp_cce_top
+bind bp_cce_fsm_top
   bp_cce_nonsynth_tracer
     #(.cfg_p(cfg_p)
       ,.cce_trace_p(cce_trace_p)
