@@ -62,10 +62,6 @@ _start:
     csrr x4, mhartid
     slli x4, x4, 3
 
-    li x3, 0x03001000
-    add x3, x3, x4
-    sb   x10, 0(x3)
-
     li   x5, 0x03002000
     add  x5, x5, x4
     sb   x10, 0(x5)
