@@ -57,8 +57,29 @@ _start:
 
 /* jump to main */
     jal main
+   
+/* load core id and shift it */
+    csrr x4, mhartid
+    slli x4, x4, 3
 
-/* to stop, make an ecall */
-loop:
-    addi x0, x0, 0
-    j loop
+    li x3, 0x03001000
+    add x3, x3, x4
+    sb   x10, 0(x3)
+
+    li   x5, 0x03002000
+    add  x5, x5, x4
+    sb   x10, 0(x5)
+    jalr x0, x1
+    nop
+    nop
+    nop
+    nop
+    nop
+
+.section ".tohost","aw",@progbits
+.align 6
+.globl tohost
+tohost: .dword 0
+.align 6
+.globl fromhost
+fromhost: .dword 0
