@@ -11,6 +11,7 @@ BP_DEMOS_C = \
   copy_example          \
   trap_demo             \
   atomic_demo           \
+  histogram             \
   hello_world_atomic
 
 BP_DEMOS_S = \

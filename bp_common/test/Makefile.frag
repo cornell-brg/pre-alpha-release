@@ -15,6 +15,7 @@ BP_DEMOS = \
   queue_demo_8  \
   copy_example  \
   trap_demo     \
+  histogram     \
   atomic_demo          
 
 RV64_BENCHMARKS = \
