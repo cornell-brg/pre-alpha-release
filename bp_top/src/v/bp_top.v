@@ -39,9 +39,18 @@ module bp_top
    , localparam num_routers_lp = num_tiles_lp+1
    
    // Other parameters
-   , localparam lce_cce_req_network_width_lp = lce_cce_req_width_lp+x_cord_width_p+1
    , localparam lce_cce_resp_network_width_lp = lce_cce_resp_width_lp+x_cord_width_p+1
    , localparam cce_lce_cmd_network_width_lp = cce_lce_cmd_width_lp+x_cord_width_p+1
+
+   , localparam lce_cce_req_num_flits_lp = bp_req_num_flit_gp
+   , localparam lce_cce_req_len_width_lp = `BSG_SAFE_CLOG2(lce_cce_req_num_flits_lp)
+   , localparam lce_cce_req_packet_width_lp = 
+       lce_cce_req_width_lp+x_cord_width_p+y_cord_width_p+lce_cce_req_len_width_lp
+   , localparam lce_cce_req_router_width_lp = 
+       (lce_cce_req_packet_width_lp/lce_cce_req_num_flits_lp) 
+       + ((lce_cce_req_packet_width_lp%lce_cce_req_num_flits_lp) == 0 ? 0 : 1)
+   , localparam lce_cce_req_payload_offset_lp = 
+       (x_cord_width_p+y_cord_width_p+lce_cce_req_len_width_lp)
 
    , localparam lce_cce_data_resp_num_flits_lp = bp_data_resp_num_flit_gp
    , localparam lce_cce_data_resp_len_width_lp = `BSG_SAFE_CLOG2(lce_cce_data_resp_num_flits_lp)
@@ -102,7 +111,7 @@ module bp_top
 
 `declare_bp_common_proc_cfg_s(num_core_p, num_cce_p, num_lce_p)
 
-logic [num_core_p:0][E:W][2+lce_cce_req_network_width_lp-1:0] lce_req_link_stitch_lo, lce_req_link_stitch_li;
+logic [num_core_p:0][E:W][2+lce_cce_req_router_width_lp-1:0] lce_req_link_stitch_lo, lce_req_link_stitch_li;
 logic [num_core_p:0][E:W][2+lce_cce_resp_network_width_lp-1:0] lce_resp_link_stitch_lo, lce_resp_link_stitch_li;
 logic [num_core_p:0][E:W][2+lce_cce_data_resp_router_width_lp-1:0] lce_data_resp_link_stitch_lo, lce_data_resp_link_stitch_li;
 logic [num_core_p:0][E:W][2+cce_lce_cmd_network_width_lp-1:0] lce_cmd_link_stitch_lo, lce_cmd_link_stitch_li;
@@ -139,7 +148,7 @@ for(genvar i = 0; i < num_core_p; i++)
     assign proc_cfg.dcache_id = dcache_id[0+:lce_id_width_lp];
 
     bsg_noc_repeater_node
-     #(.width_p(lce_cce_req_network_width_lp)
+     #(.width_p(lce_cce_req_router_width_lp)
        ,.num_nodes_p(repeater_depth_lp[i])
        )
      lce_req_repeater

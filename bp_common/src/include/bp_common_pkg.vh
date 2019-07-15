@@ -37,6 +37,7 @@ package bp_common_pkg;
 
   parameter bp_data_resp_num_flit_gp = 4;
   parameter bp_data_cmd_num_flit_gp = 4;
+  parameter bp_req_num_flit_gp = 2;
  
   localparam dram_base_addr_gp         = 32'h8000_0000;
  
