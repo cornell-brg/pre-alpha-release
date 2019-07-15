@@ -205,7 +205,7 @@ module bp_be_dcache_lce_req
           state_n = e_SEND_UNCACHED_LOAD_REQ;
         end
         else if (uncached_store_req_i) begin
-          lce_req_v_o = lce_req_ready_i & ~credits_full_i;
+          lce_req_v_o = ~credits_full_i;
           lce_req.addr = miss_addr_i;
           lce_req.msg_type = e_lce_req_type_wr;
           lce_req.non_cacheable = e_lce_req_non_cacheable;
