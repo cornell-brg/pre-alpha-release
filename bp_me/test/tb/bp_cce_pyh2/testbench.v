@@ -14,7 +14,7 @@ module testbench
  import bp_be_rv64_pkg::*;
  import bp_cce_pkg::*;
  import bp_cfg_link_pkg::*;
- #(parameter bp_cfg_e cfg_p = BP_CFG_FLOWVAR // Replaced by the flow with a specific bp_cfg
+ #(parameter bp_cfg_e cfg_p = e_bp_half_core_cfg // Replaced by the flow with a specific bp_cfg
    `declare_bp_proc_params(cfg_p)
 
    // interface widths
