@@ -24,7 +24,7 @@ class bp_dram
     std::map<string, svBitVecVal *> result_data;
     std::map<string, bool> result_pending;
 
-    std::map<uint64_t, std::queue<string>> addr_tracker;
+    std::map<uint64_t, std::queue<string> > addr_tracker;
 
   public:
     void read_hex(char *);

@@ -11,8 +11,13 @@ Author : Yanghui Ou, Peitian Pan
 
 from pymtl3 import *
 
+from pymtl3.passes.sverilog import ImportPass
 from pymtl3.dsl import Placeholder
-from pymtl3.stdlib.ifcs import DeqIfcRTL, GiveIfcRTL, OutValRdyIfc
+from pymtl3.stdlib.ifcs import DeqIfcRTL, GiveIfcRTL, OutValRdyIfc, \
+                               EnqIfcRTL, GetIfcRTL, InValRdyIfc, \
+                               SendIfcRTL
+from pymtl3.stdlib.rtl.queues import BypassQueueRTL
+
 
 #-------------------------------------------------------------------------
 # testbench
@@ -20,24 +25,25 @@ from pymtl3.stdlib.ifcs import DeqIfcRTL, GiveIfcRTL, OutValRdyIfc
 # TODO:rename testbench into something meaningful.
 
 class testbench( Placeholder, Component ):
-  def construct( s, import_params ):
+  # def construct( s, import_params ):
+  def construct( s ):
 
     # FIXME: calculate ReqType from import params.
-    ReqType  = mk_bits( 64 )
-    RespType = mk_bits( 64 )
+    ReqType  = mk_bits( 107 )
+    RespType = mk_bits( 107 )
 
     # Delete default clk/reset
-    del( s.clk   )
-    del( s.reset )
+    # del( s.clk   )
+    # del( s.reset )
 
     # Interface
-    s.clk_i          = Inport ( Bits1    )
-    s.reset_i        = InPort ( Bits1    )
+    # s.clk_i          = InPort ( Bits1    )
+    # s.reset_i        = InPort ( Bits1    )
     s.freeze_i       = InPort ( Bits1    )
 
     # Req side - equivalent to a deq interface
-    s.tr_pkt_v_i     = Inport ( Bits1    )
-    s.tr_pkt_i       = Inport ( ReqType  )
+    s.tr_pkt_v_i     = InPort ( Bits1    )
+    s.tr_pkt_i       = InPort ( ReqType  )
     s.tr_pkt_yumi_o  = OutPort( Bits1    )
 
     # Resp side - equivalent to a val/rdy
@@ -47,7 +53,9 @@ class testbench( Placeholder, Component ):
 
     # Metadata for verilog import
     s.sverilog_import = True
-    s.sverilog_import_path = "../testbench.v"
+    s.bp_import = True
+    # s.sverilog_import_path = "../testbench.v"
+    s.sverilog_import_path = "testbench.sv"
 
 #-------------------------------------------------------------------------
 # BpMeBlackBox
@@ -59,16 +67,17 @@ class BpMeBlackBox( Component ):
   def construct( s, ReqType, RespType ):
 
     # Interface
-    s.freeze = Inport      ( Bits1    )
+    s.freeze = InPort      ( Bits1    )
     s.req    = GetIfcRTL   ( ReqType  )
     s.resp   = OutValRdyIfc( RespType )
 
     # Components
-    s.me_box = testbench({
-      # TODO: parameters
-    })(
-      clk_i          = s.clk,
-      reset_i        = s.reset,
+    # s.me_box = testbench({
+      # # TODO: parameters
+    # })(
+    s.me_box = testbench()(
+      # clk_i          = s.clk,
+      # reset_i        = s.reset,
       freeze_i       = s.freeze,
       tr_pkt_v_i     = s.req.rdy,
       tr_pkt_i       = s.req.msg,
@@ -120,6 +129,8 @@ class WrappedBox( Component ):
     s.req  = EnqIfcRTL( ReqType  )
     s.resp = DeqIfcRTL( RespType )
 
+    s.freeze = InPort( Bits1 )
+
     s.req_q  = BypassQueueRTL( ReqType, num_entries=1 )
     s.resp_q = BypassQueueRTL( ReqType, num_entries=1 )
     s.dut = BpMeBlackBox( ReqType, RespType )
@@ -130,6 +141,15 @@ class WrappedBox( Component ):
     s.connect( s.dut.resp, s.adapter.in_ )
     s.connect( s.adapter.out, s.resp_q.enq )
     s.connect( s.resp_q.deq, s.resp )
+    s.connect( s.freeze, s.dut.freeze )
 
   def line_trace( s ):
     return "{}(){}".format( s.req, s.resp )
+
+if __name__ == "__main__":
+  tb = WrappedBox( Bits107, Bits107 )
+  tb.elaborate()
+  # del( s.clk   )
+  # del( s.reset )
+  tb = ImportPass()( tb )
+  tb.elaborate()

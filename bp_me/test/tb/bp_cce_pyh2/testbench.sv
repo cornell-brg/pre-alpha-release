@@ -43,8 +43,10 @@ module testbench
    , localparam cce_instr_ram_addr_width_lp = `BSG_SAFE_CLOG2(num_cce_instr_ram_els_p)
 
    )
-  (input clk_i
-   , input reset_i
+  //(input clk_i
+   //, input reset_i
+  (input clk
+   , input reset
    , input freeze_i
 
    // Load/Store command in
@@ -115,8 +117,10 @@ bp_me_nonsynth_mock_lce #(
   ,.axe_trace_p(axe_trace_p)
   ,.perf_trace_p(lce_perf_trace_p)
 ) lce (
-  .clk_i(clk_i)
-  ,.reset_i(reset_i)
+  //.clk_i(clk_i)
+  //,.reset_i(reset_i)
+  .clk_i(clk)
+  ,.reset_i(reset)
   ,.freeze_i(freeze_i)
 
   ,.lce_id_i('0)
@@ -194,8 +198,10 @@ wrapper
   ,.cce_trace_p(cce_trace_p)
  )
 wrapper
- (.clk_i(clk_i)
-  ,.reset_i(reset_i)
+ //(.clk_i(clk_i)
+  //,.reset_i(reset_i)
+ (.clk_i(clk)
+  ,.reset_i(reset)
 
   // maybe tie to reset?
   ,.freeze_i(freeze_i)
@@ -260,8 +266,10 @@ bp_mem_dramsim2
    ,.lce_req_data_width_p(dword_width_p)
   )
 mem
- (.clk_i(clk_i)
-  ,.reset_i(reset_i)
+ //(.clk_i(clk_i)
+ (.clk_i(clk)
+  //,.reset_i(reset_i)
+  ,.reset_i(reset)
 
   ,.mem_cmd_i(mem_cmd)
   ,.mem_cmd_v_i(mem_cmd_v)
