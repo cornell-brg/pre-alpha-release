@@ -32,13 +32,7 @@ class testbench( Placeholder, Component ):
     ReqType  = mk_bits( 107 )
     RespType = mk_bits( 107 )
 
-    # Delete default clk/reset
-    # del( s.clk   )
-    # del( s.reset )
-
     # Interface
-    # s.clk_i          = InPort ( Bits1    )
-    # s.reset_i        = InPort ( Bits1    )
     s.freeze_i       = InPort ( Bits1    )
 
     # Req side - equivalent to a deq interface
@@ -72,12 +66,7 @@ class BpMeBlackBox( Component ):
     s.resp   = OutValRdyIfc( RespType )
 
     # Components
-    # s.me_box = testbench({
-      # # TODO: parameters
-    # })(
     s.me_box = testbench()(
-      # clk_i          = s.clk,
-      # reset_i        = s.reset,
       freeze_i       = s.freeze,
       tr_pkt_v_i     = s.req.rdy,
       tr_pkt_i       = s.req.msg,
@@ -149,8 +138,6 @@ class WrappedBox( Component ):
 if __name__ == "__main__":
   tb = WrappedBox( Bits107, Bits107 )
   tb.elaborate()
-  # del( s.clk   )
-  # del( s.reset )
   tb = ImportPass()( tb )
   tb.elaborate()
   tb.apply( SimulationPass )
