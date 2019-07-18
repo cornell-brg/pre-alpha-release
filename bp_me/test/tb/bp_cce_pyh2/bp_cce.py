@@ -26,6 +26,10 @@ class testbench( Placeholder, Component ):
     ReqType  = mk_bits( 64 )
     RespType = mk_bits( 64 )
 
+    # Delete default clk/reset
+    del( s.clk   )
+    del( s.reset )
+
     # Interface
     s.clk_i          = Inport ( Bits1    )
     s.reset_i        = InPort ( Bits1    )
@@ -40,6 +44,10 @@ class testbench( Placeholder, Component ):
     s.tr_pkt_v_o     = OutPort( Bits1    )
     s.tr_pkt_o       = OutPort( RespType )
     s.tr_pkt_ready_i = InPort ( Bits1    )
+
+    # Metadata for verilog import
+    s.sverilog_import = True
+    s.sverilog_import_path = "../testbench.v"
 
 #-------------------------------------------------------------------------
 # BpMeBlackBox
@@ -70,5 +78,58 @@ class BpMeBlackBox( Component ):
       tr_pkt_ready_i = s.resp.rdy,
     )
 
-    # Metadata for verilog import
-    s.me_box.sverilog_import = True
+#-------------------------------------------------------------------------
+# ValRdy2EnRdy
+#-------------------------------------------------------------------------
+# A val/rdy to send adapter.
+
+class ValRdy2EnRdy( Component ):
+
+  def construct( s, MsgType ):
+
+    s.in_ = InValRdyIfc( MsgType )
+    s.out = SendIfcRTL( MsgType )
+
+    @s.update
+    def comb_logic0():
+      s.in_.rdy = s.out.rdy
+
+    @s.update
+    def comb_logic1():
+      s.out.en  = s.out.rdy & s.in_.val
+
+    @s.update
+    def comb_logic2():
+      s.out.msg = s.in_.msg
+
+  def line_trace( s ):
+
+    return "{}(){}".format( s.in_, s.out )
+
+#-------------------------------------------------------------------------
+# WrappedBpBox
+#-------------------------------------------------------------------------
+# A wrapper that adds queues to req and resp side to create callee
+# interfaces.
+
+class WrappedBox( Component ):
+
+  def construct( s, ReqType, RespType ):
+
+    # Interface
+    s.req  = EnqIfcRTL( ReqType  )
+    s.resp = DeqIfcRTL( RespType )
+
+    s.req_q  = BypassQueueRTL( ReqType, num_entries=1 )
+    s.resp_q = BypassQueueRTL( ReqType, num_entries=1 )
+    s.dut = BpMeBlackBox( ReqType, RespType )
+    s.adapter = ValRdy2EnRdy( RespType )
+
+    s.connect( s.req, s.req_q.enq )
+    s.connect( s.req_q.deq, s.dut.req )
+    s.connect( s.dut.resp, s.adapter.in_ )
+    s.connect( s.adapter.out, s.resp_q.enq )
+    s.connect( s.resp_q.deq, s.resp )
+
+  def line_trace( s ):
+    return "{}(){}".format( s.req, s.resp )
