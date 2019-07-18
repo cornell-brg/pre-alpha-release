@@ -153,3 +153,8 @@ if __name__ == "__main__":
   # del( s.reset )
   tb = ImportPass()( tb )
   tb.elaborate()
+  tb.apply( SimulationPass )
+  tb.reset()
+  tb.tick()
+  tb.tick()
+  tb.tick()
