@@ -30,7 +30,7 @@ module bp_cce_top
   #(parameter bp_cfg_e cfg_p = e_bp_inv_cfg
     `declare_bp_proc_params(cfg_p)
 
-    , parameter cce_trace_p             = "inv"
+    , parameter cce_trace_p             = 0
 
     // Derived parameters
     , localparam block_size_in_bytes_lp = (cce_block_width_p/8)
@@ -281,58 +281,5 @@ module bp_cce_top
       ,.mem_data_cmd_v_o(mem_data_cmd_v_from_cce)
       ,.mem_data_cmd_ready_i(mem_data_cmd_ready_to_cce)
       );
-
-if (cce_trace_p) begin : cce_tracer
-  bp_cce_nonsynth_tracer
-    #(.num_lce_p(num_lce_p)
-      ,.num_cce_p(num_cce_p)
-      ,.paddr_width_p(paddr_width_p)
-      ,.lce_assoc_p(lce_assoc_p)
-      ,.lce_sets_p(lce_sets_p)
-      ,.block_size_in_bytes_p(block_size_in_bytes_lp)
-      ,.lce_req_data_width_p(dword_width_p)
-      )
-    bp_cce_tracer
-     (.clk_i(clk_i)
-      ,.reset_i(reset_i)
-
-      ,.cce_id_i(cce_id_i)
-
-      // To CCE
-      ,.lce_req_i(lce_req_to_cce)
-      ,.lce_req_v_i(lce_req_v_to_cce)
-      ,.lce_req_yumi_i(lce_req_yumi_from_cce)
-      ,.lce_resp_i(lce_resp_to_cce)
-      ,.lce_resp_v_i(lce_resp_v_to_cce)
-      ,.lce_resp_yumi_i(lce_resp_yumi_from_cce)
-      ,.lce_data_resp_i(lce_data_resp_to_cce)
-      ,.lce_data_resp_v_i(lce_data_resp_v_to_cce)
-      ,.lce_data_resp_yumi_i(lce_data_resp_yumi_from_cce)
-
-      // From CCE
-      ,.lce_cmd_i(lce_cmd_o)
-      ,.lce_cmd_v_i(lce_cmd_v_o)
-      ,.lce_cmd_ready_i(lce_cmd_ready_i)
-      ,.lce_data_cmd_i(lce_data_cmd_o)
-      ,.lce_data_cmd_v_i(lce_data_cmd_v_o)
-      ,.lce_data_cmd_ready_i(lce_data_cmd_ready_i)
-
-      // To CCE
-      ,.mem_resp_i(mem_resp_to_cce)
-      ,.mem_resp_v_i(mem_resp_v_to_cce)
-      ,.mem_resp_yumi_i(mem_resp_yumi_from_cce)
-      ,.mem_data_resp_i(mem_data_resp_to_cce)
-      ,.mem_data_resp_v_i(mem_data_resp_v_to_cce)
-      ,.mem_data_resp_yumi_i(mem_data_resp_yumi_from_cce)
-
-      // From CCE
-      ,.mem_cmd_i(mem_cmd_from_cce)
-      ,.mem_cmd_v_i(mem_cmd_v_from_cce)
-      ,.mem_cmd_ready_i(mem_cmd_ready_to_cce)
-      ,.mem_data_cmd_i(mem_data_cmd_from_cce)
-      ,.mem_data_cmd_v_i(mem_data_cmd_v_from_cce)
-      ,.mem_data_cmd_ready_i(mem_data_cmd_ready_to_cce)
-      );
-end // cce_tracer
 
 endmodule

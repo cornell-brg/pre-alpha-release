@@ -15,7 +15,7 @@ module bp_cce
   #(parameter bp_cfg_e cfg_p = e_bp_inv_cfg
     `declare_bp_proc_params(cfg_p)
 
-    , parameter cce_trace_p             = "inv"
+    , parameter cce_trace_p             = 0
 
     // Derived parameters
     , localparam block_size_in_bytes_lp    = (cce_block_width_p/8)
@@ -262,7 +262,7 @@ module bp_cce
       ,.alu_branch_res_i(alu_branch_res_lo)
 
       ,.dir_busy_i(dir_busy_lo)
-      ,.gad_error_i(gad_error_lo)
+      ,.gad_error_i(1'b0)
 
       ,.pc_stall_i(pc_stall_lo)
       ,.pc_branch_target_i(pc_branch_target_lo)
