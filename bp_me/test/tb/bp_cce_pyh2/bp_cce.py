@@ -68,23 +68,34 @@ class BpMeBlackBox( Component ):
     s.req_wire = Wire( Bits107 )
     s.resp_wire = Wire( Bits107 )
 
-    s.connect( s.req.msg.type_,  s.req_wire[0 :4  ]  )
-    s.connect( s.req.msg.addr,   s.req_wire[4 :43 ]  )
-    s.connect( s.req.msg.type_,  s.req_wire[43:107]  )
+    s.connect( s.req.msg.type_, s.req_wire[0 :4  ] )
+    s.connect( s.req.msg.addr,  s.req_wire[4 :43 ] )
+    s.connect( s.req.msg.data,  s.req_wire[43:107] )
 
     s.connect( s.resp.msg.type_, s.resp_wire[0 :4  ] )
     s.connect( s.resp.msg.addr,  s.resp_wire[4 :43 ] )
-    s.connect( s.resp.msg.type_, s.resp_wire[43:107] )
+    s.connect( s.resp.msg.data,  s.resp_wire[43:107] )
 
     # Components
     s.me_box = testbench()(
       freeze_i       = s.freeze,
       tr_pkt_v_i     = s.req.rdy,
-      tr_pkt_i       = s.req.msg,
+      tr_pkt_i       = s.req_wire,
       tr_pkt_yumi_o  = s.req.en,
       tr_pkt_v_o     = s.resp.val,
-      tr_pkt_o       = s.resp.msg,
+      tr_pkt_o       = s.resp_wire,
       tr_pkt_ready_i = s.resp.rdy,
+    )
+
+  def line_trace( s ):
+    return "f:{},v_i:{},m_i:{},y_i:{},v_o:{},m_o:{},r_o:{}".format(
+      s.me_box.freeze_i, 
+      s.me_box.tr_pkt_v_i,
+      s.me_box.tr_pkt_i,
+      s.me_box.tr_pkt_yumi_o,
+      s.me_box.tr_pkt_v_o,
+      s.me_box.tr_pkt_o,
+      s.me_box.tr_pkt_ready_i,
     )
 
 #-------------------------------------------------------------------------
@@ -112,7 +123,6 @@ class ValRdy2EnRdy( Component ):
       s.out.msg = s.in_.msg
 
   def line_trace( s ):
-
     return "{}(){}".format( s.in_, s.out )
 
 #-------------------------------------------------------------------------
@@ -131,9 +141,9 @@ class WrappedBox( Component ):
 
     s.freeze = InPort( Bits1 )
 
-    s.req_q  = BypassQueueRTL( ReqType, num_entries=1 )
-    s.resp_q = BypassQueueRTL( ReqType, num_entries=1 )
-    s.dut = BpMeBlackBox( ReqType, RespType )
+    s.req_q   = BypassQueueRTL( ReqType, num_entries=1 )
+    s.resp_q  = BypassQueueRTL( ReqType, num_entries=1 )
+    s.dut     = BpMeBlackBox( ReqType, RespType )
     s.adapter = ValRdy2EnRdy( RespType )
 
     s.connect( s.req, s.req_q.enq )
@@ -144,7 +154,20 @@ class WrappedBox( Component ):
     s.connect( s.freeze, s.dut.freeze )
 
   def line_trace( s ):
-    return "{}(){}".format( s.req, s.resp )
+    return "{}({}){}".format( s.req, s.dut.line_trace(), s.resp )
+
+  def sim_freeze( s ):
+    s.reset  = b1(1)
+    s.freeze = b1(1)
+    s.tick()
+    s.reset = b1(0)
+    for _ in range( 5 ):
+      print( s.line_trace() )
+      s.tick()
+    s.freeze = b1(0)
+    print( s.line_trace() )
+    s.tick()
+    print( "freeze finished" )
 
 if __name__ == "__main__":
   tb = WrappedBox( Bits107, Bits107 )
