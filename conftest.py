@@ -1,5 +1,9 @@
 from __future__ import absolute_import, division, print_function
 
+import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"pymtl3") )
+
 import pytest
 
 
