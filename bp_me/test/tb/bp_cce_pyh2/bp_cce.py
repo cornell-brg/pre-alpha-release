@@ -50,6 +50,7 @@ class testbench( Placeholder, Component ):
     s.bp_import = True
     # s.sverilog_import_path = "../testbench.v"
     s.sverilog_import_path = "testbench.sv"
+    # s.dump_vcd = True
 
 #-------------------------------------------------------------------------
 # BpMeBlackBox
@@ -68,13 +69,13 @@ class BpMeBlackBox( Component ):
     s.req_wire = Wire( Bits107 )
     s.resp_wire = Wire( Bits107 )
 
-    s.connect( s.req.msg.type_, s.req_wire[0 :4  ] )
-    s.connect( s.req.msg.addr,  s.req_wire[4 :43 ] )
-    s.connect( s.req.msg.data,  s.req_wire[43:107] )
+    s.connect( s.req.msg.type_, s.req_wire[103:107] )
+    s.connect( s.req.msg.addr,  s.req_wire[64 :103] )
+    s.connect( s.req.msg.data,  s.req_wire[0  :64 ] )
 
-    s.connect( s.resp.msg.type_, s.resp_wire[0 :4  ] )
-    s.connect( s.resp.msg.addr,  s.resp_wire[4 :43 ] )
-    s.connect( s.resp.msg.data,  s.resp_wire[43:107] )
+    s.connect( s.resp.msg.type_, s.resp_wire[103:107] )
+    s.connect( s.resp.msg.addr,  s.resp_wire[64 :103] )
+    s.connect( s.resp.msg.data,  s.resp_wire[0  :64 ] )
 
     # Components
     s.me_box = testbench()(
@@ -160,22 +161,17 @@ class WrappedBox( Component ):
     s.reset  = b1(1)
     s.freeze = b1(1)
     s.tick()
+    s.tick()
+    s.tick()
     s.reset = b1(0)
-    for _ in range( 5 ):
-      print( s.line_trace() )
-      s.tick()
+    s.tick()
+    s.tick()
+    s.tick()
     s.freeze = b1(0)
-    print( s.line_trace() )
+    for _ in range( 5000 ):
+      # print( s.line_trace() )
+      s.tick()
+    # print( s.line_trace() )
     s.tick()
     print( "freeze finished" )
 
-if __name__ == "__main__":
-  tb = WrappedBox( Bits107, Bits107 )
-  tb.elaborate()
-  tb = ImportPass()( tb )
-  tb.elaborate()
-  tb.apply( SimulationPass )
-  tb.reset()
-  tb.tick()
-  tb.tick()
-  tb.tick()
