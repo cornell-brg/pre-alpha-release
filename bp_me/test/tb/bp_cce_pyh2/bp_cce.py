@@ -47,10 +47,10 @@ class testbench( Placeholder, Component ):
 
     # Metadata for verilog import
     s.sverilog_import = True
-    s.bp_import = True
-    # s.sverilog_import_path = "../testbench.v"
     s.sverilog_import_path = "testbench.sv"
-    s.dump_vcd = True
+    s.bp_import = True
+    # Uncomment this flag to enable vcd dumping from verilator.
+    # s.dump_vcd = True
 
 #-------------------------------------------------------------------------
 # BpMeBlackBox
@@ -58,7 +58,6 @@ class testbench( Placeholder, Component ):
 
 class BpMeBlackBox( Component ):
 
-  # TODO: add parameters.
   def construct( s, ReqType, RespType ):
 
     # Interface
@@ -98,10 +97,6 @@ class BpMeBlackBox( Component ):
       s.me_box.tr_pkt_o,
       s.me_box.tr_pkt_ready_i,
     )
-    #  return "{}||{}".format(
-    #    s.me_box.line_trace(),
-    #    s.me_box.internal_line_trace(),
-    #  )
 
 #-------------------------------------------------------------------------
 # ValRdy2EnRdy
