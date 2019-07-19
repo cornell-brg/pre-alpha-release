@@ -7,25 +7,23 @@ Test cases for black parrot memory system.
 Author : Yanghui Ou, Peitian Pan
   Date : July 18, 2019
 """
+import hypothesis
+from hypothesis import strategies as st
 
 from pymtl3 import *
+from pymtl3.datatypes import strategies as pst
 from pymtl3.passes import GenDAGPass, OpenLoopCLPass as AutoTickSimPass
 from pymtl3.passes.sverilog import ImportPass
+from pymtl3.stdlib.test.pyh2.stateful_bp import run_pyh2_bp
 
 from .bp_cce import WrappedBox
+from .BpMemMsg import BpMsg, BpMemMsgType
 from .BpMemCLWrapper import BpMemCLWrapper
+from .BpRefMemFL import BpRefMemFL
 
-
-class BpMemMsgType( object ):
-  # TODO: add other types here
-  LD8  = b4(0b0011)
-  ST8  = b4(0b1011)
-
-BpMsg = mk_bit_struct( "BpMemMsg",[
-  ( 'type_', Bits4  ),
-  ( 'addr',  Bits39 ),
-  ( 'data',  Bits64 ),
-])
+#-------------------------------------------------------------------------
+# Ad-hoc test
+#-------------------------------------------------------------------------
 
 def test_bp_mem_adhoc():
   mem = WrappedBox( BpMsg, BpMsg )
@@ -70,6 +68,10 @@ def test_bp_mem_adhoc():
   mem.tick()
   mem.tick()
 
+#-------------------------------------------------------------------------
+# Auto-tick test
+#-------------------------------------------------------------------------
+
 def test_auto_tick():
   # Create an auto-tick simulator
   mem = BpMemCLWrapper( WrappedBox( BpMsg, BpMsg ) )
@@ -98,3 +100,22 @@ def test_auto_tick():
   assert mem.resp.rdy()
   assert mem.resp().data == 0xdeadface
 
+#-------------------------------------------------------------------------
+# Auto-tick test
+#-------------------------------------------------------------------------
+
+@st.composite
+def bp_mem_msg_strat( draw ):
+  type_ = draw( st.sampled_from([ BpMsgType.ST8, BpMsgType.LD8 ]) )
+  addr  = draw( st.integers(100, 120) )
+  addr  = b39( addr << 2 )
+  data  = draw( st.sampled_from([ b64(0xfaceb00c), b64(0xdeadface), b64(0xdeafbabe) ]) )
+  return BpMemMsg( type_, addr, data )
+
+def test_pyh2():
+  run_pyh2_bp(
+    WrappedBox( BpMsg, BpMsg ),
+    BpRefMemFL(),
+    BpMemCLWrapper,
+    { 'req.msg' : bp_mem_msg_strat() },
+  )
