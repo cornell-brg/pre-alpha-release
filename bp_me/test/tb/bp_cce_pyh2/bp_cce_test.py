@@ -9,6 +9,7 @@ Author : Yanghui Ou, Peitian Pan
 """
 
 from pymtl3 import *
+from pymtl3.passes.sverilog import ImportPass
 
 from .bp_cce import WrappedBox
 
@@ -22,6 +23,7 @@ BpMsg = mk_bit_struct( "BpMemMsg",[
   ( 'addr',  Bits39 ),
   ( 'data',  Bits64 ),
 ])
+
 
 def test_bp_mem_adhoc():
   mem = WrappedBox( BpMsg, BpMsg )

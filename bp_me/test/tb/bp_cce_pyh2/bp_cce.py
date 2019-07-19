@@ -65,6 +65,17 @@ class BpMeBlackBox( Component ):
     s.req    = GetIfcRTL   ( ReqType  )
     s.resp   = OutValRdyIfc( RespType )
 
+    s.req_wire = Wire( Bits107 )
+    s.resp_wire = Wire( Bits107 )
+
+    s.connect( s.req.msg.type_,  s.req_wire[0 :4  ]  )
+    s.connect( s.req.msg.addr,   s.req_wire[4 :43 ]  )
+    s.connect( s.req.msg.type_,  s.req_wire[43:107]  )
+
+    s.connect( s.resp.msg.type_, s.resp_wire[0 :4  ] )
+    s.connect( s.resp.msg.addr,  s.resp_wire[4 :43 ] )
+    s.connect( s.resp.msg.type_, s.resp_wire[43:107] )
+
     # Components
     s.me_box = testbench()(
       freeze_i       = s.freeze,
