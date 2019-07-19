@@ -71,29 +71,30 @@ def test_bp_mem_adhoc():
   mem.tick()
 
 def test_auto_tick():
-  mem = BpMemCLWrapper(
-    WrappedBox( BpMsg, BpMsg ),
-    { 'req': BpMsg, 'resp': BpMsg },
-  )
+  # Create an auto-tick simulator
+  mem = BpMemCLWrapper( WrappedBox( BpMsg, BpMsg ) )
   mem.elaborate()
   mem = ImportPass()( mem )
   mem.apply( GenDAGPass() )
   mem.apply( AutoTickSimPass() )
   mem.lock_in_simulation()
   mem.bp_init()
-
+  
+  # Send a store request
   assert mem.req.rdy()
   mem.req( BpMsg( BpMemMsgType.ST8, b39(0x1000), b64(0xdeadface) ) )
 
+  # Send a back to back load request
   assert mem.req.rdy()
   mem.req( BpMsg( BpMemMsgType.LD8, b39(0x1000), b64(0)          ) )
-
+  
+  # Get store response
   while not mem.resp.rdy(): pass
   assert mem.resp.rdy()
   mem.resp()
-
+  
+  # Check load response
   while not mem.resp.rdy(): pass
   assert mem.resp.rdy()
   assert mem.resp().data == 0xdeadface
-
 
