@@ -9,9 +9,11 @@ Author : Yanghui Ou, Peitian Pan
 """
 
 from pymtl3 import *
+from pymtl3.passes import GenDAGPass, OpenLoopCLPass as AutoTickSimPass
 from pymtl3.passes.sverilog import ImportPass
 
 from .bp_cce import WrappedBox
+from .BpMemCLWrapper import BpMemCLWrapper
 
 
 class BpMemMsgType( object ):
@@ -67,3 +69,31 @@ def test_bp_mem_adhoc():
   mem.tick()
   mem.tick()
   mem.tick()
+
+def test_auto_tick():
+  mem = BpMemCLWrapper(
+    WrappedBox( BpMsg, BpMsg ),
+    { 'req': BpMsg, 'resp': BpMsg },
+  )
+  mem.elaborate()
+  mem = ImportPass()( mem )
+  mem.apply( GenDAGPass() )
+  mem.apply( AutoTickSimPass() )
+  mem.lock_in_simulation()
+  mem.bp_init()
+
+  assert mem.req.rdy()
+  mem.req( BpMsg( BpMemMsgType.ST8, b39(0x1000), b64(0xdeadface) ) )
+
+  assert mem.req.rdy()
+  mem.req( BpMsg( BpMemMsgType.LD8, b39(0x1000), b64(0)          ) )
+
+  while not mem.resp.rdy(): pass
+  assert mem.resp.rdy()
+  mem.resp()
+
+  while not mem.resp.rdy(): pass
+  assert mem.resp.rdy()
+  assert mem.resp().data == 0xdeadface
+
+
