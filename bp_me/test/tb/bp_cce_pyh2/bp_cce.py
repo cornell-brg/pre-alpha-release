@@ -50,7 +50,7 @@ class testbench( Placeholder, Component ):
     s.bp_import = True
     # s.sverilog_import_path = "../testbench.v"
     s.sverilog_import_path = "testbench.sv"
-    # s.dump_vcd = True
+    s.dump_vcd = True
 
 #-------------------------------------------------------------------------
 # BpMeBlackBox
@@ -98,6 +98,10 @@ class BpMeBlackBox( Component ):
       s.me_box.tr_pkt_o,
       s.me_box.tr_pkt_ready_i,
     )
+    #  return "{}||{}".format(
+    #    s.me_box.line_trace(),
+    #    s.me_box.internal_line_trace(),
+    #  )
 
 #-------------------------------------------------------------------------
 # ValRdy2EnRdy
@@ -157,7 +161,7 @@ class WrappedBox( Component ):
   def line_trace( s ):
     return "{}({}){}".format( s.req, s.dut.line_trace(), s.resp )
 
-  def sim_freeze( s ):
+  def bp_init( s ):
     s.reset  = b1(1)
     s.freeze = b1(1)
     s.tick()
@@ -169,9 +173,7 @@ class WrappedBox( Component ):
     s.tick()
     s.freeze = b1(0)
     for _ in range( 5000 ):
-      # print( s.line_trace() )
       s.tick()
-    # print( s.line_trace() )
     s.tick()
-    print( "freeze finished" )
+    print( "init finished" )
 

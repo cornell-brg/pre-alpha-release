@@ -31,17 +31,39 @@ def test_bp_mem_adhoc():
   mem = ImportPass()( mem )
   mem.elaborate()
   mem.apply( SimulationPass )
+
   # Reset and freeze
-  mem.sim_freeze()
+  mem.bp_init()
   assert mem.req.rdy
   mem.req.msg = BpMsg( BpMemMsgType.ST8, b39(0x1000), b64(0xfaceb00c) ) 
   mem.req.en  = b1(1)
   print( mem.line_trace() )
   mem.tick()
   mem.req.en  = b1(0)
-  # while not mem.resp.rdy:
-  for _ in range(10):
+  while not mem.resp.rdy:
     print( mem.line_trace() )
     mem.tick()
-  # assert mem.resp.rdy
-  # print( mem.resp.msg )
+  assert mem.resp.rdy
+  mem.resp.en = b1(1)
+  print( "resp:", str(mem.resp.msg) )
+  mem.tick()
+  mem.resp.en = b1(0)
+  mem.tick()
+  mem.req.msg = BpMsg( BpMemMsgType.LD8, b39(0x1000), b64(0xfaceb00c) ) 
+  mem.req.en  = b1(1)
+  print( mem.line_trace() )
+  mem.tick()
+  mem.req.en = b1(0)
+  while not mem.resp.rdy:
+    print( mem.line_trace() )
+    mem.tick()
+  assert mem.resp.rdy
+  mem.resp.en = b1(1)
+  print( "resp:", str(mem.resp.msg) )
+  assert mem.resp.msg.data == 0xfaceb00c
+  mem.tick()
+  mem.resp.en = b1(0)
+  mem.tick()
+  mem.tick()
+  mem.tick()
+  mem.tick()

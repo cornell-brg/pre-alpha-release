@@ -139,7 +139,7 @@ module bp_cce_fsm
     if (reset_i) begin
       cce_mode_r <= e_cce_mode_normal;
     end else begin
-      cce_mode_r <= cce_mode_n;
+      cce_mode_r <= e_cce_mode_normal;
     end
   end
 
@@ -469,9 +469,9 @@ module bp_cce_fsm
         sc_cnt_inc = cnt_clr & ~sc_cnt_clr;
 
         // override next state if in uncached mode
-        state_n = ((state_n == SEND_SET_CLEAR) & (cce_mode_r == e_cce_mode_uncached))
-                  ? READY
-                  : state_n;
+        // state_n = ((state_n == SEND_SET_CLEAR) & (cce_mode_r == e_cce_mode_uncached))
+        //          ? READY
+        //          : state_n;
       end
       SEND_SET_CLEAR: begin
         // output a valid set clear command
