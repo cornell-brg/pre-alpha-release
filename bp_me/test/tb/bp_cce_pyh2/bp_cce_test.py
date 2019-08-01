@@ -14,7 +14,7 @@ from pymtl3 import *
 from pymtl3.datatypes import strategies as pst
 from pymtl3.passes import GenDAGPass, OpenLoopCLPass as AutoTickSimPass
 from pymtl3.passes.sverilog import ImportPass
-from pymtl3.stdlib.test.pyh2.stateful_bp import run_pyh2_bp
+# from pymtl3.stdlib.test.pyh2.stateful_bp import run_pyh2_bp
 
 from .bp_cce import WrappedBox
 from .BpMemMsg import BpMsg, BpMemMsgType
@@ -33,9 +33,11 @@ def test_bp_mem_adhoc():
   mem.apply( SimulationPass )
 
   # Reset and freeze
+  print("-----bp-init-----")
   mem.bp_init()
+  print("  Init done!")
   assert mem.req.rdy
-  mem.req.msg = BpMsg( BpMemMsgType.ST8, b39(0x1000), b64(0xfaceb00c) ) 
+  mem.req.msg = BpMsg( BpMemMsgType.ST8, b39(0x1000), b64(0xfaceb00c) )
   mem.req.en  = b1(1)
   print( mem.line_trace() )
   mem.tick()
@@ -112,10 +114,10 @@ def bp_mem_msg_strat( draw ):
   data  = draw( st.sampled_from([ b64(0xfaceb00c), b64(0xdeadface), b64(0xdeafbabe) ]) )
   return BpMemMsg( type_, addr, data )
 
-def test_pyh2():
-  run_pyh2_bp(
-    WrappedBox( BpMsg, BpMsg ),
-    BpRefMemFL(),
-    BpMemCLWrapper,
-    { 'req.msg' : bp_mem_msg_strat() },
-  )
+# def test_pyh2():
+  # run_pyh2_bp(
+    # WrappedBox( BpMsg, BpMsg ),
+    # BpRefMemFL(),
+    # BpMemCLWrapper,
+    # { 'req.msg' : bp_mem_msg_strat() },
+  # )

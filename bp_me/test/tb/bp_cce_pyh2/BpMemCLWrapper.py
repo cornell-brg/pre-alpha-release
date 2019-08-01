@@ -27,9 +27,9 @@ class BpMemCLWrapper( Component ):
 
     s.model = rtl_model
 
-    s.connect( s.freeze, s.model.freeze )
-    s.connect( s.req,    s.model.req    )
-    s.connect( s.resp,   s.model.resp   )
+    connect( s.freeze, s.model.freeze )
+    connect( s.req,    s.model.req    )
+    connect( s.resp,   s.model.resp   )
 
   def line_trace( s ):
     return s.model.line_trace()
