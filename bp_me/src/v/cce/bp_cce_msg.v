@@ -28,12 +28,12 @@ module bp_cce_msg
     , localparam lg_lce_sets_lp            = `BSG_SAFE_CLOG2(lce_sets_p)
     , localparam num_way_groups_lp         = (lce_sets_p/num_cce_p)
     , localparam lg_num_way_groups_lp      = `BSG_SAFE_CLOG2(num_way_groups_lp)
-    , localparam mshr_width_lp = `bp_cce_mshr_width(num_lce_p, lce_assoc_p, paddr_width_p)
-    , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+    , localparam mshr_width_lp = `bp_cce_mshr_width(lce_id_width_p, lce_assoc_p, paddr_width_p)
+    , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
 
     // interface widths
-    `declare_bp_lce_cce_if_widths(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
-    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p)
+    `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
+    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
   )
   (input                                               clk_i
    , input                                             reset_i
@@ -62,17 +62,9 @@ module bp_cce_msg
    , input                                             mem_resp_v_i
    , output logic                                      mem_resp_yumi_o
 
-   , input [cce_mem_msg_width_lp-1:0]                  mem_cmd_i
-   , input                                             mem_cmd_v_i
-   , output logic                                      mem_cmd_yumi_o
-
    , output logic [cce_mem_msg_width_lp-1:0]           mem_cmd_o
    , output logic                                      mem_cmd_v_o
    , input                                             mem_cmd_ready_i
-
-   , output logic [cce_mem_msg_width_lp-1:0]           mem_resp_o
-   , output logic                                      mem_resp_v_o
-   , input                                             mem_resp_ready_i
 
    // MSHR
    , input [mshr_width_lp-1:0]                         mshr_i
@@ -106,53 +98,49 @@ module bp_cce_msg
   );
 
   // Define structure variables for output queues
-  `declare_bp_cfg_bus_s(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p);
-  `declare_bp_me_if(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p);
-  `declare_bp_lce_cce_if(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p);
+  `declare_bp_cfg_bus_s(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p);
+  `declare_bp_me_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p);
+  `declare_bp_lce_cce_if(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p);
 
-  bp_cfg_bus_s      cfg_bus_cast_i;
-  bp_lce_cce_req_s  lce_req_li;
-  bp_lce_cce_resp_s lce_resp_li;
-  bp_lce_cmd_s      lce_cmd_lo;
+  bp_cfg_bus_s cfg_bus_cast_i;
 
-  bp_cce_mem_msg_s  mem_cmd_li, mem_cmd_lo, mem_resp_li, mem_resp_lo;
-
-  // assign output queue ports to structure variables
   assign cfg_bus_cast_i = cfg_bus_i;
 
-  assign lce_cmd_o = lce_cmd_lo;
-  assign mem_cmd_o = mem_cmd_lo;
-  assign mem_resp_o = mem_resp_lo;
-
-  // cast input messages with data
-  assign mem_resp_li = mem_resp_i;
-  assign mem_cmd_li = mem_cmd_i;
-  assign lce_resp_li = lce_resp_i;
-  assign lce_req_li = lce_req_i;
-
   // Message Unit Signals
-  logic                                          lce_req_yumi_from_msg;
-  logic                                          lce_resp_yumi_from_msg;
-  logic [lce_cmd_width_lp-1:0]                   lce_cmd_from_msg;
-  logic                                          lce_cmd_v_from_msg;
-  logic                                          mem_resp_yumi_from_msg;
-  logic                                          mem_cmd_yumi_from_msg;
-  logic [cce_mem_msg_width_lp-1:0]               mem_cmd_from_msg;
-  logic                                          mem_cmd_v_from_msg;
-  logic [cce_mem_msg_width_lp-1:0]               mem_resp_from_msg;
-  logic                                          mem_resp_v_from_msg;
+  bp_lce_cce_req_s                               lce_req_from_msg;
+  logic                                          lce_req_v_from_msg, lce_req_yumi_from_msg;
+  bp_lce_cce_resp_s                              lce_resp_from_msg;
+  logic                                          lce_resp_v_from_msg, lce_resp_yumi_from_msg;
+  bp_lce_cmd_s                                   lce_cmd_from_msg;
+  logic                                          lce_cmd_v_from_msg, lce_cmd_ready_from_msg;
+  bp_cce_mem_msg_s                               mem_cmd_from_msg;
+  logic                                          mem_cmd_v_from_msg, mem_cmd_ready_from_msg;
+  bp_cce_mem_msg_s                               mem_resp_from_msg;
+  logic                                          mem_resp_v_from_msg, mem_resp_yumi_from_msg;
 
   // Uncached Module Signals
-  logic                                          lce_req_yumi_from_uc;
-  logic                                          lce_resp_yumi_from_uc;
-  logic [lce_cmd_width_lp-1:0]                   lce_cmd_from_uc;
-  logic                                          lce_cmd_v_from_uc;
-  logic                                          mem_resp_yumi_from_uc;
-  logic                                          mem_cmd_yumi_from_uc;
-  logic [cce_mem_msg_width_lp-1:0]               mem_cmd_from_uc;
-  logic                                          mem_cmd_v_from_uc;
-  logic [cce_mem_msg_width_lp-1:0]               mem_resp_from_uc;
-  logic                                          mem_resp_v_from_uc;
+  bp_lce_cce_req_s                               lce_req_from_uc;
+  logic                                          lce_req_v_from_uc, lce_req_yumi_from_uc;
+  bp_lce_cmd_s                                   lce_cmd_from_uc;
+  logic                                          lce_cmd_v_from_uc, lce_cmd_ready_from_uc;
+  bp_cce_mem_msg_s                               mem_cmd_from_uc;
+  logic                                          mem_cmd_v_from_uc, mem_cmd_ready_from_uc;
+  bp_cce_mem_msg_s                               mem_resp_from_uc;
+  logic                                          mem_resp_v_from_uc, mem_resp_yumi_from_uc;
+
+  logic [$bits(bp_cce_mode_e)-1:0] cce_mode_r;
+  bp_cce_mode_e cce_mode_lo;
+  bsg_dff_reset_en
+   #(.width_p($bits(bp_cce_mode_e)))
+   cce_mode_reg
+    (.clk_i(clk_i)
+     ,.reset_i(reset_i)
+     ,.en_i(mem_resp_yumi_o)
+
+     ,.data_i(cfg_bus_cast_i.cce_mode)
+     ,.data_o(cce_mode_r)
+     );
+  assign cce_mode_lo = {cce_mode_r};
 
   // Message unit
   bp_cce_msg_cached
@@ -162,37 +150,31 @@ module bp_cce_msg
       ,.reset_i(reset_i)
 
       ,.cce_id_i(cfg_bus_cast_i.cce_id)
-      ,.cce_mode_i(cfg_bus_cast_i.cce_mode)
+      ,.cce_mode_i(cce_mode_lo)
 
       // To CCE
-      ,.lce_req_i(lce_req_li)
-      ,.lce_req_v_i(lce_req_v_i)
+      ,.lce_req_i(lce_req_from_msg)
+      ,.lce_req_v_i(lce_req_v_from_msg)
       ,.lce_req_yumi_o(lce_req_yumi_from_msg)
 
-      ,.lce_resp_i(lce_resp_li)
-      ,.lce_resp_v_i(lce_resp_v_i)
+      ,.lce_resp_i(lce_resp_from_msg)
+      ,.lce_resp_v_i(lce_resp_v_from_msg)
       ,.lce_resp_yumi_o(lce_resp_yumi_from_msg)
 
       // From CCE
       ,.lce_cmd_o(lce_cmd_from_msg)
       ,.lce_cmd_v_o(lce_cmd_v_from_msg)
-      ,.lce_cmd_ready_i(lce_cmd_ready_i)
+      ,.lce_cmd_ready_i(lce_cmd_ready_from_msg)
 
       // To CCE
-      ,.mem_resp_i(mem_resp_li)
-      ,.mem_resp_v_i(mem_resp_v_i)
+      ,.mem_resp_i(mem_resp_from_msg)
+      ,.mem_resp_v_i(mem_resp_v_from_msg)
       ,.mem_resp_yumi_o(mem_resp_yumi_from_msg)
-      ,.mem_cmd_i(mem_cmd_li)
-      ,.mem_cmd_v_i(mem_cmd_v_i)
-      ,.mem_cmd_yumi_o(mem_cmd_yumi_from_msg)
 
       // From CCE
       ,.mem_cmd_o(mem_cmd_from_msg)
       ,.mem_cmd_v_o(mem_cmd_v_from_msg)
-      ,.mem_cmd_ready_i(mem_cmd_ready_i)
-      ,.mem_resp_o(mem_resp_from_msg)
-      ,.mem_resp_v_o(mem_resp_v_from_msg)
-      ,.mem_resp_ready_i(mem_resp_ready_i)
+      ,.mem_cmd_ready_i(mem_cmd_ready_from_msg)
 
       ,.mshr_i(mshr_i)
       ,.decoded_inst_i(decoded_inst_i)
@@ -226,38 +208,27 @@ module bp_cce_msg
       ,.reset_i(reset_i)
 
       ,.cce_id_i(cfg_bus_cast_i.cce_id)
-      ,.cce_mode_i(cfg_bus_cast_i.cce_mode)
+      ,.cce_mode_i(cce_mode_lo)
 
       // To CCE
-      ,.lce_req_i(lce_req_li)
-      ,.lce_req_v_i(lce_req_v_i)
+      ,.lce_req_i(lce_req_from_uc)
+      ,.lce_req_v_i(lce_req_v_from_uc)
       ,.lce_req_yumi_o(lce_req_yumi_from_uc)
-
-//      ,.lce_resp_i(lce_resp_li)
-//      ,.lce_resp_v_i(lce_resp_v_i)
-      ,.lce_resp_yumi_o(lce_resp_yumi_from_uc)
 
       // From CCE
       ,.lce_cmd_o(lce_cmd_from_uc)
       ,.lce_cmd_v_o(lce_cmd_v_from_uc)
-      ,.lce_cmd_ready_i(lce_cmd_ready_i)
+      ,.lce_cmd_ready_i(lce_cmd_ready_from_uc)
 
       // To CCE
-      ,.mem_resp_i(mem_resp_li)
-      ,.mem_resp_v_i(mem_resp_v_i)
+      ,.mem_resp_i(mem_resp_from_uc)
+      ,.mem_resp_v_i(mem_resp_v_from_uc)
       ,.mem_resp_yumi_o(mem_resp_yumi_from_uc)
-      ,.mem_cmd_i(mem_cmd_li)
-      ,.mem_cmd_v_i(mem_cmd_v_i)
-      ,.mem_cmd_yumi_o(mem_cmd_yumi_from_uc)
 
       // From CCE
       ,.mem_cmd_o(mem_cmd_from_uc)
       ,.mem_cmd_v_o(mem_cmd_v_from_uc)
-      ,.mem_cmd_ready_i(mem_cmd_ready_i)
-      ,.mem_resp_o(mem_resp_from_uc)
-      ,.mem_resp_v_o(mem_resp_v_from_uc)
-      ,.mem_resp_ready_i(mem_resp_ready_i)
-
+      ,.mem_cmd_ready_i(mem_cmd_ready_from_uc)
       );
 
   // Output Message Formation
@@ -269,32 +240,49 @@ module bp_cce_msg
   // buffered by bp_cce_buffered.v, but messages to memory are.
   always_comb
   begin
-    if (cfg_bus_cast_i.cce_mode == e_cce_mode_uncached) begin
-      lce_resp_yumi_o = '0;
+    {lce_req_from_uc, lce_req_v_from_uc, lce_cmd_ready_from_uc} = '0;
+    {mem_cmd_ready_from_uc, mem_resp_from_uc, mem_resp_v_from_uc} = '0;
+
+    {lce_req_from_msg, lce_req_v_from_msg, lce_resp_from_msg, lce_resp_v_from_msg, lce_cmd_ready_from_msg} = '0;
+    {mem_cmd_ready_from_msg, mem_resp_from_msg, mem_resp_v_from_msg} = '0;
+    if (cce_mode_lo == e_cce_mode_uncached) begin
+      lce_req_from_uc = lce_req_i;
+      lce_req_v_from_uc = lce_req_v_i;
       lce_req_yumi_o = lce_req_yumi_from_uc;
 
-      mem_resp_yumi_o = mem_resp_yumi_from_uc;
-      mem_cmd_yumi_o = mem_cmd_yumi_from_uc;
+      lce_cmd_o = lce_cmd_from_uc;
       lce_cmd_v_o = lce_cmd_v_from_uc;
-      mem_cmd_v_o = mem_cmd_v_from_uc;
-      mem_resp_v_o = mem_resp_v_from_uc;
+      lce_cmd_ready_from_uc = lce_cmd_ready_i;
 
-      lce_cmd_lo = lce_cmd_from_uc;
-      mem_cmd_lo = mem_cmd_from_uc;
-      mem_resp_lo = mem_resp_from_uc;
+      lce_resp_yumi_o = '0;
+
+      mem_cmd_o = mem_cmd_from_uc;
+      mem_cmd_v_o = mem_cmd_v_from_uc;
+      mem_cmd_ready_from_uc = mem_cmd_ready_i;
+
+      mem_resp_from_uc = mem_resp_i;
+      mem_resp_v_from_uc = mem_resp_v_i;
+      mem_resp_yumi_o = mem_resp_yumi_from_uc;
     end else begin
+      lce_req_from_msg = lce_req_i;
+      lce_req_v_from_msg = lce_req_v_i;
       lce_req_yumi_o = lce_req_yumi_from_msg;
+
+      lce_cmd_o = lce_cmd_from_msg;
+      lce_cmd_v_o = lce_cmd_v_from_msg;
+      lce_cmd_ready_from_msg = lce_cmd_ready_i;
+
+      lce_resp_from_msg = lce_resp_i;
+      lce_resp_v_from_msg = lce_resp_v_i;
       lce_resp_yumi_o = lce_resp_yumi_from_msg;
 
-      mem_resp_yumi_o = mem_resp_yumi_from_msg;
-      mem_cmd_yumi_o = mem_cmd_yumi_from_msg;
-      lce_cmd_v_o = lce_cmd_v_from_msg;
+      mem_cmd_o = mem_cmd_from_msg;
       mem_cmd_v_o = mem_cmd_v_from_msg;
-      mem_resp_v_o = mem_resp_v_from_msg;
+      mem_cmd_ready_from_msg = mem_cmd_ready_i;
 
-      lce_cmd_lo = lce_cmd_from_msg;
-      mem_cmd_lo = mem_cmd_from_msg;
-      mem_resp_lo = mem_resp_from_msg;
+      mem_resp_from_msg = mem_resp_i;
+      mem_resp_v_from_msg = mem_resp_v_i;
+      mem_resp_yumi_o = mem_resp_yumi_from_msg;
     end
   end
 

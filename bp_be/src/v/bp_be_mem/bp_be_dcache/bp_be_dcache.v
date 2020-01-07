@@ -84,7 +84,7 @@ module bp_be_dcache
     , parameter lock_max_limit_p=8
     , parameter debug_p=0 
 
-    , localparam cfg_bus_width_lp= `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+    , localparam cfg_bus_width_lp= `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
     , localparam block_size_in_words_lp=lce_assoc_p
     , localparam data_mask_width_lp=(dword_width_p>>3)
     , localparam byte_offset_width_lp=`BSG_SAFE_CLOG2(dword_width_p>>3)
@@ -96,13 +96,12 @@ module bp_be_dcache
     , localparam way_id_width_lp=`BSG_SAFE_CLOG2(lce_assoc_p)
   
     , localparam lce_data_width_lp=(lce_assoc_p*dword_width_p)
-    , localparam lce_id_width_lp=`BSG_SAFE_CLOG2(num_lce_p)
 
     , localparam dcache_pkt_width_lp=`bp_be_dcache_pkt_width(page_offset_width_p,dword_width_p)
     , localparam tag_info_width_lp=`bp_be_dcache_tag_info_width(tag_width_lp)
     , localparam stat_info_width_lp=`bp_be_dcache_stat_info_width(lce_assoc_p)
    
-    `declare_bp_lce_cce_if_widths(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p) 
+    `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p) 
   )
   (
     input clk_i
@@ -152,7 +151,7 @@ module bp_be_dcache
     , output credits_empty_o
   );
 
-  `declare_bp_cfg_bus_s(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p);
+  `declare_bp_cfg_bus_s(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p);
   bp_cfg_bus_s cfg_bus_cast_i;
   assign cfg_bus_cast_i = cfg_bus_i;
 
@@ -651,7 +650,6 @@ module bp_be_dcache
       ,.reset_i(reset_i)
     
       ,.lce_id_i(cfg_bus_cast_i.dcache_id)
-      ,.lce_mode_i(cfg_bus_cast_i.dcache_mode)
 
       ,.ready_o(ready_o)
       ,.cache_miss_o(cache_miss_o)
@@ -1117,9 +1115,9 @@ module bp_be_dcache
   always_ff @ (negedge clk_i) begin
     if (v_tv_r) begin
       assert($countones(load_hit_tv) <= 1)
-        else $error("multiple load hit: %b. id = %0d", load_hit_tv, cfg_bus_cast_i.dcache_id);
+        else $error("multiple load hit: %b. id = %0d. addr = %H", load_hit_tv, cfg_bus_cast_i.dcache_id, addr_tag_tv);
       assert($countones(store_hit_tv) <= 1)
-        else $error("multiple store hit: %b. id = %0d", store_hit_tv, cfg_bus_cast_i.dcache_id);
+        else $error("multiple store hit: %b. id = %0d. addr = %H", store_hit_tv, cfg_bus_cast_i.dcache_id, addr_tag_tv);
       assert (~(sc_op_tv_r & load_reserved_v_r & (load_reserved_tag_r == addr_tag_tv) & (load_reserved_index_r == addr_index_tv)) | store_hit)
           else $error("sc success without exclusive ownership of cache line: %x %x", load_reserved_tag_r, load_reserved_index_r);
     end

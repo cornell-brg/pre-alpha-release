@@ -37,7 +37,7 @@ typedef enum logic [1:0] {
 `define bp_fe_icache_lce_data_mem_opcode_width $bits(bp_fe_icache_lce_data_mem_opcode_e)
 
 /*
- * bp_fe_lce_cce_req_state_e specifies the state of the lce_cmd.
+ * bp_fe_lce_cce_req_state_e specifies the state of the lce_req module
  */
 typedef enum logic [2:0] {
   e_lce_req_ready
@@ -51,13 +51,13 @@ typedef enum logic [2:0] {
 `define bp_fe_lce_req_state_width $bits(bp_fe_lce_req_state_e)
 
 /*
- * bp_fe_cce_lce_cmd_state_e specifies the state of the lce_cmd.
- *TODO:same name for transfer used in common
+ * bp_fe_cce_lce_cmd_state_e specifies the state of the lce_cmd module
  */
 typedef enum logic [1:0] {
-  e_lce_cmd_reset     = 2'b00
-  , e_lce_cmd_ready    = 2'b01
-  , e_lce_cmd_transfer_tmp = 2'b10
+  e_lce_cmd_reset
+  , e_lce_cmd_uncached_only
+  , e_lce_cmd_ready
+  , e_lce_cmd_send_transfer
 } bp_fe_lce_cmd_state_e;
 
 `define bp_fe_lce_cmd_state_width $bits(bp_fe_lce_cmd_state_e)
@@ -118,10 +118,8 @@ typedef enum logic [1:0] {
 /*
  * Declare all icache-lce-cce width calculations at once as localparams
  */
-`define declare_bp_fe_tag_widths(ways_mp, sets_mp, num_lce_mp, num_cce_mp, data_width_mp, paddr_width_mp)   \
+`define declare_bp_fe_tag_widths(ways_mp, sets_mp, lce_id_width_mp, cce_id_width_mp, data_width_mp, paddr_width_mp)   \
     , localparam way_id_width_lp=`BSG_SAFE_CLOG2(ways_mp)                                                   \
-    , localparam lce_id_width_lp=`BSG_SAFE_CLOG2(num_lce_mp)                                                \
-    , localparam cce_id_width_lp=`BSG_SAFE_CLOG2(num_cce_mp)                                                \
     , localparam lce_data_width_lp=(ways_mp*data_width_mp)                                                  \
     , localparam block_size_in_words_lp=ways_mp                                                             \
     , localparam data_mask_width_lp=(data_width_mp>>3)                                                      \

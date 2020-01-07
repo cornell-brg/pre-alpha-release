@@ -25,7 +25,6 @@ package bp_common_pkg;
    * when they import this package, `declare the if structs. No more casting!
    */
 
-  localparam bp_eaddr_width_gp = 64;
   localparam bp_instr_width_gp = 32;
 
   parameter bp_sv39_page_table_depth_gp = 3;
@@ -36,23 +35,23 @@ package bp_common_pkg;
   parameter bp_page_size_in_bytes_gp = 4096;
   parameter bp_page_offset_width_gp = `BSG_SAFE_CLOG2(bp_page_size_in_bytes_gp);
 
-  parameter bp_data_resp_num_flit_gp = 4;
-  parameter bp_data_cmd_num_flit_gp = 4;
- 
-  localparam dram_base_addr_gp         = 32'h8000_0000;
- 
-  localparam cfg_link_dev_base_addr_gp = 32'h01??_????;
-  localparam clint_dev_base_addr_gp    = 32'h02??_????;
-  localparam host_dev_base_addr_gp     = 32'h03??_????;
-  localparam cce_dev_base_addr_gp      = 32'h04??_????;
-  localparam plic_dev_base_addr_gp     = 32'h0c??_????;
+  localparam host_dev_gp  = 1;
+  localparam cfg_dev_gp   = 2;
+  localparam clint_dev_gp = 3;
+
+                             // 0x00_0(nnnN)(D)(A_AAAA)
+  localparam host_dev_base_addr_gp     = 32'h0010_0000;
+  localparam cfg_dev_base_addr_gp      = 32'h0020_0000;
+  localparam clint_dev_base_addr_gp    = 32'h0030_0000;
   
-  localparam mipi_reg_base_addr_gp     = 32'h0200_0???;
-  localparam mtimecmp_reg_base_addr_gp = 32'h0200_4???;
-  localparam mtime_reg_addr_gp         = 32'h0200_bff8;
-  localparam plic_reg_base_addr_gp     = 32'h0c00_0???;
+  localparam mipi_reg_base_addr_gp     = 32'h0030_0000;
+  localparam mtimecmp_reg_base_addr_gp = 32'h0030_4000;
+  localparam mtime_reg_addr_gp         = 32'h0030_8000;
+  localparam plic_reg_base_addr_gp     = 32'h0030_b000;
 
-  localparam coproc_dev_base_addr_gp   = 32'h4???_????;
+  localparam dram_base_addr_gp         = 40'h00_8000_0000;
+  localparam coproc_base_addr_gp       = 40'h10_0000_0000;
+  localparam global_base_addr_gp       = 40'h20_0000_0000;
 
-endpackage : bp_common_pkg
+endpackage
 

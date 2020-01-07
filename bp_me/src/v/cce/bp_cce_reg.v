@@ -25,12 +25,11 @@ module bp_cce_reg
       (paddr_width_p-lg_lce_sets_lp-lg_block_size_in_bytes_lp)
     , localparam entry_width_lp             = (tag_width_lp+`bp_coh_bits)
     , localparam tag_set_width_lp           = (entry_width_lp*lce_assoc_p)
-    , localparam cfg_bus_width_lp         = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
 
-    , localparam mshr_width_lp = `bp_cce_mshr_width(num_lce_p, lce_assoc_p, paddr_width_p)
+    , localparam mshr_width_lp = `bp_cce_mshr_width(lce_id_width_p, lce_assoc_p, paddr_width_p)
 
-    `declare_bp_lce_cce_if_widths(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
-    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p)
+    `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
+    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
   )
   (input                                                                   clk_i
    , input                                                                 reset_i
@@ -41,7 +40,6 @@ module bp_cce_reg
    , input                                                                 null_wb_flag_i
    , input bp_lce_cce_resp_type_e                                          lce_resp_type_i
    , input bp_cce_mem_cmd_type_e                                           mem_resp_type_i
-   , input [cce_mem_msg_width_lp-1:0]                                      mem_cmd_i
 
    , input [`bp_cce_inst_gpr_width-1:0]                                    alu_res_i
    , input [`bp_cce_inst_gpr_width-1:0]                                    mov_src_i
@@ -66,8 +64,6 @@ module bp_cce_reg
    , input                                                                 gad_cached_owned_flag_i
    , input                                                                 gad_cached_dirty_flag_i
 
-   , input [cfg_bus_width_lp-1:0]                                         cfg_bus_i
-
    // Register value outputs
    , output logic [mshr_width_lp-1:0]                                      mshr_o
 
@@ -82,8 +78,8 @@ module bp_cce_reg
 
   // Define structure variables for input queues
 
-  `declare_bp_me_if(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p);
-  `declare_bp_lce_cce_if(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p);
+  `declare_bp_me_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p);
+  `declare_bp_lce_cce_if(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p);
 
   bp_lce_cce_req_s lce_req;
 
@@ -93,11 +89,8 @@ module bp_cce_reg
   logic uc_req;
   assign uc_req = (lce_req.msg_type == e_lce_req_type_uc_rd) | (lce_req.msg_type == e_lce_req_type_uc_wr);
 
-  bp_cce_mem_msg_s mem_cmd;
-  assign mem_cmd = mem_cmd_i;
-
   // Registers
-  `declare_bp_cce_mshr_s(num_lce_p, lce_assoc_p, paddr_width_p);
+  `declare_bp_cce_mshr_s(lce_id_width_p, lce_assoc_p, paddr_width_p);
   bp_cce_mshr_s mshr_r, mshr_n;
 
   logic [`bp_cce_inst_num_gpr-1:0][`bp_cce_inst_gpr_width-1:0] gpr_r, gpr_n;
@@ -123,8 +116,6 @@ module bp_cce_reg
         gpr_n[i] = {'0, lce_resp_type_i};
       end else if (decoded_inst_i.mem_resp_type_w_v & decoded_inst_i.gpr_w_mask[i]) begin
         gpr_n[i] = {'0, mem_resp_type_i};
-      end else if (decoded_inst_i.mem_cmd_type_w_v & decoded_inst_i.gpr_w_mask[i]) begin
-        gpr_n[i] = {'0, mem_cmd.msg_type};
       end else if (decoded_inst_i.dir_r_v
                    & (decoded_inst_i.minor_op_u.dir_minor_op == e_rde_op)
                    & decoded_inst_i.gpr_w_mask[i]) begin
@@ -163,10 +154,6 @@ module bp_cce_reg
         e_req_sel_pending: begin // TODO: v2
           mshr_n.lce_id = '0;
           mshr_n.paddr = '0;
-        end
-        e_req_sel_mem_cmd: begin
-          mshr_n.lce_id = mem_cmd.payload.lce_id;
-          mshr_n.paddr = mem_cmd.addr;
         end
         default: begin
           mshr_n.lce_id = '0;

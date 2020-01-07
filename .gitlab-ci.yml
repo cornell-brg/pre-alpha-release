@@ -48,7 +48,7 @@ cache: &global_cache
     - $CI_PROJECT_DIR/external/
   policy: pull
 
-update-cache:
+update-tools-cache:
   <<: *job_definition
   when: manual
   stage: prereq
@@ -57,6 +57,20 @@ update-cache:
   script:
     - make tools -j $CI_CORES > make_tools.log
     - make tidy_tools > make_tidy_tools.log
+  cache:
+    key: $CI_COMMIT_REF_SLUG
+    paths:
+      - $CI_PROJECT_DIR/external/
+      - $CI_PROJECT_DIR/bp_common/test/mem/
+    policy: pull-push
+
+update-progs-cache:
+  <<: *job_definition
+  when: manual
+  stage: prereq
+  tags:
+    - bsg
+  script:
     - make progs > make_progs.log
     - make -C bp_common/test riscvdv > make_riscvdv.log
   cache:
@@ -64,7 +78,7 @@ update-cache:
     paths:
       - $CI_PROJECT_DIR/external/
       - $CI_PROJECT_DIR/bp_common/test/mem/
-    policy: push
+    policy: pull-push
 
 check-design:
   <<: *job_definition
@@ -81,22 +95,23 @@ lint-verilator:
     - verilator
   script:
     - $CI_PROJECT_DIR/ci/regress.sh lint.sc bp_top
-      
-me-regress-verilator:
-  <<: *job_definition
-  stage: test-short
-  tags:
-    - verilator
-  script:
-    - $CI_PROJECT_DIR/ci/regress.sh regress.me.sc bp_me
-     
-me-regress-vcs:
-  <<: *job_definition
-  stage: test-short
-  tags:
-    - vcs
-  script:
-    - $CI_PROJECT_DIR/ci/regress.sh regress.me.v bp_me
+ 
+# TODO: Re-enable when testbenches are fixed up     
+#me-regress-verilator:
+#  <<: *job_definition
+#  stage: test-short
+#  tags:
+#    - verilator
+#  script:
+#    - $CI_PROJECT_DIR/ci/regress.sh regress.me.sc bp_me
+#     
+#me-regress-vcs:
+#  <<: *job_definition
+#  stage: test-short
+#  tags:
+#    - vcs
+#  script:
+#    - $CI_PROJECT_DIR/ci/regress.sh regress.me.v bp_me
       
 top-riscv-verilator:
   <<: *job_definition

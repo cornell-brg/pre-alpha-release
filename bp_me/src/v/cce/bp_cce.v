@@ -32,11 +32,11 @@ module bp_cce
     , localparam num_way_groups_lp         = (lce_sets_p/num_cce_p)
     , localparam lg_num_way_groups_lp      = `BSG_SAFE_CLOG2(num_way_groups_lp)
     , localparam inst_ram_addr_width_lp    = `BSG_SAFE_CLOG2(num_cce_instr_ram_els_p)
-    , localparam cfg_bus_width_lp          = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+    , localparam cfg_bus_width_lp          = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
 
     // interface widths
-    `declare_bp_lce_cce_if_widths(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
-    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p)
+    `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
+    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
   )
   (input                                               clk_i
    , input                                             reset_i
@@ -66,17 +66,9 @@ module bp_cce
    , input                                             mem_resp_v_i
    , output logic                                      mem_resp_yumi_o
 
-   , input [cce_mem_msg_width_lp-1:0]                  mem_cmd_i
-   , input                                             mem_cmd_v_i
-   , output logic                                      mem_cmd_yumi_o
-
    , output logic [cce_mem_msg_width_lp-1:0]           mem_cmd_o
    , output logic                                      mem_cmd_v_o
    , input                                             mem_cmd_ready_i
-
-   , output logic [cce_mem_msg_width_lp-1:0]           mem_resp_o
-   , output logic                                      mem_resp_v_o
-   , input                                             mem_resp_ready_i
   );
 
   //synopsys translate_off
@@ -89,28 +81,26 @@ module bp_cce
 
   // Define structure variables for output queues
 
-  `declare_bp_me_if(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p);
-  `declare_bp_lce_cce_if(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p);
+  `declare_bp_me_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p);
+  `declare_bp_lce_cce_if(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p);
 
   bp_lce_cce_req_s  lce_req_li;
   bp_lce_cce_resp_s lce_resp_li;
   bp_lce_cmd_s      lce_cmd_lo;
 
-  bp_cce_mem_msg_s  mem_cmd_li, mem_cmd_lo, mem_resp_li, mem_resp_lo;
+  bp_cce_mem_msg_s  mem_cmd_lo, mem_resp_li;
 
   // assign output queue ports to structure variables
   assign lce_cmd_o = lce_cmd_lo;
   assign mem_cmd_o = mem_cmd_lo;
-  assign mem_resp_o = mem_resp_lo;
 
   // cast input messages with data
   assign mem_resp_li = mem_resp_i;
-  assign mem_cmd_li = mem_cmd_i;
   assign lce_resp_li = lce_resp_i;
   assign lce_req_li = lce_req_i;
 
   // Config bus
-  `declare_bp_cfg_bus_s(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p);
+  `declare_bp_cfg_bus_s(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p);
   bp_cfg_bus_s cfg_bus_cast_i;
   assign cfg_bus_cast_i = cfg_bus_i;
 
@@ -178,7 +168,7 @@ module bp_cce
   logic gad_cached_dirty_flag_lo;
 
   // Register signals
-  `declare_bp_cce_mshr_s(num_lce_p, lce_assoc_p, paddr_width_p);
+  `declare_bp_cce_mshr_s(lce_id_width_p, lce_assoc_p, paddr_width_p);
   bp_cce_mshr_s mshr;
 
   logic null_wb_flag_li;
@@ -239,12 +229,10 @@ module bp_cce
       ,.lce_resp_v_i(lce_resp_v_i)
       ,.lce_resp_type_i(lce_resp_li.msg_type)
       ,.mem_resp_v_i(mem_resp_v_i)
-      ,.mem_cmd_v_i(mem_cmd_v_i)
       ,.pending_v_i('0)
 
       ,.lce_cmd_ready_i(lce_cmd_ready_i)
       ,.mem_cmd_ready_i(mem_cmd_ready_i)
-      ,.mem_resp_ready_i(mem_resp_ready_i)
 
       ,.fence_zero_i(fence_zero_lo)
 
@@ -343,7 +331,7 @@ module bp_cce
       ,.sharers_ways_i(sharers_ways_lo)
       ,.sharers_coh_states_i(sharers_coh_states_lo)
 
-      ,.req_lce_i(mshr.lce_id)
+      ,.req_lce_i(lg_num_lce_lp'(mshr.lce_id))
       ,.req_type_flag_i(mshr.flags[e_flag_sel_rqf])
       ,.lru_dirty_flag_i(mshr.flags[e_flag_sel_ldf])
       ,.lru_cached_excl_flag_i(mshr.flags[e_flag_sel_lef])
@@ -372,8 +360,7 @@ module bp_cce
       ,.lce_req_i(lce_req_li)
       ,.null_wb_flag_i(null_wb_flag_li)
       ,.lce_resp_type_i(lce_resp_li.msg_type)
-      ,.mem_resp_type_i(mem_resp_li.msg_type.cce_mem_cmd)
-      ,.mem_cmd_i(mem_cmd_li)
+      ,.mem_resp_type_i(mem_resp_li.msg_type)
       ,.alu_res_i(alu_res_lo)
       ,.mov_src_i(src_a)
 
@@ -395,8 +382,6 @@ module bp_cce
       ,.gad_cached_exclusive_flag_i(gad_cached_exclusive_flag_lo)
       ,.gad_cached_owned_flag_i(gad_cached_owned_flag_lo)
       ,.gad_cached_dirty_flag_i(gad_cached_dirty_flag_lo)
-
-      ,.cfg_bus_i(cfg_bus_i)
 
       // register state outputs
       ,.mshr_o(mshr)
@@ -433,17 +418,11 @@ module bp_cce
       ,.mem_resp_i(mem_resp_i)
       ,.mem_resp_v_i(mem_resp_v_i)
       ,.mem_resp_yumi_o(mem_resp_yumi_o)
-      ,.mem_cmd_i(mem_cmd_i)
-      ,.mem_cmd_v_i(mem_cmd_v_i)
-      ,.mem_cmd_yumi_o(mem_cmd_yumi_o)
 
       // From CCE
       ,.mem_cmd_o(mem_cmd_lo)
       ,.mem_cmd_v_o(mem_cmd_v_o)
       ,.mem_cmd_ready_i(mem_cmd_ready_i)
-      ,.mem_resp_o(mem_resp_lo)
-      ,.mem_resp_v_o(mem_resp_v_o)
-      ,.mem_resp_ready_i(mem_resp_ready_i)
 
       ,.mshr_i(mshr)
       ,.decoded_inst_i(decoded_inst_lo)
@@ -651,7 +630,6 @@ module bp_cce
           e_src_mem_resp_v: src_a[0] = mem_resp_v_i;
           e_src_pending_v: src_a = '0; // TODO: v2
           e_src_lce_resp_v: src_a[0] = lce_resp_v_i;
-          e_src_mem_cmd_v: src_a[0] = mem_cmd_v_i;
           e_src_lce_resp_type: src_a[0+:$bits(bp_lce_cce_resp_type_e)] = lce_resp_li.msg_type;
           e_src_special_0: src_a[0] = 1'b0;
           e_src_special_1: src_a[0] = 1'b1;
@@ -724,7 +702,6 @@ module bp_cce
           e_src_mem_resp_v: src_b[0] = mem_resp_v_i;
           e_src_pending_v: src_b = '0; // TODO: v2
           e_src_lce_resp_v: src_b[0] = lce_resp_v_i;
-          e_src_mem_cmd_v: src_b[0] = mem_cmd_v_i;
           e_src_lce_resp_type: src_b[0+:$bits(bp_lce_cce_resp_type_e)] = lce_resp_li.msg_type;
           e_src_special_0: src_b[0] = 1'b0;
           e_src_special_1: src_b[0] = 1'b1;

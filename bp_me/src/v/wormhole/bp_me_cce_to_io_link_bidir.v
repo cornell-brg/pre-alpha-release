@@ -1,44 +1,40 @@
 
-module bp_me_cce_to_wormhole_link_bidir
+module bp_me_cce_to_io_link_bidir
  import bp_cce_pkg::*;
  import bp_common_pkg::*;
  import bp_common_aviary_pkg::*;
  import bp_me_pkg::*;
  #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
   `declare_bp_proc_params(bp_params_p)
-  `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p)
+  `declare_bp_io_if_widths(paddr_width_p, dword_width_p, lce_id_width_p)
 
-  , localparam bsg_ready_and_link_sif_width_lp = `bsg_ready_and_link_sif_width(mem_noc_flit_width_p)
+  , localparam bsg_ready_and_link_sif_width_lp = `bsg_ready_and_link_sif_width(io_noc_flit_width_p)
   )
 
   (input                                          clk_i
    , input                                        reset_i
 
    // Configuration
-   , input [mem_noc_did_width_p-1:0]              my_did_i
-   , input [mem_noc_cord_width_p-1:0]             my_cord_i
-   , input [mem_noc_cid_width_p-1:0]              my_cid_i
-   , input [mem_noc_cid_width_p-1:0]              dst_cid_i
-   , input [mem_noc_cord_width_p-1:0]             dst_cord_i
-   , input [mem_noc_did_width_p-1:0]              dst_did_i
+   , input [io_noc_cord_width_p-1:0]              my_cord_i
+   , input [io_noc_cord_width_p-1:0]              dst_cord_i
 
    // Master link
-   , input  [cce_mem_msg_width_lp-1:0]            mem_cmd_i
-   , input                                        mem_cmd_v_i
-   , output                                       mem_cmd_ready_o
+   , input  [cce_io_msg_width_lp-1:0]             io_cmd_i
+   , input                                        io_cmd_v_i
+   , output                                       io_cmd_ready_o
 
-   , output [cce_mem_msg_width_lp-1:0]            mem_resp_o
-   , output                                       mem_resp_v_o
-   , input                                        mem_resp_yumi_i
+   , output [cce_io_msg_width_lp-1:0]             io_resp_o
+   , output                                       io_resp_v_o
+   , input                                        io_resp_yumi_i
 
    // Client link
-   , output  [cce_mem_msg_width_lp-1:0]           mem_cmd_o
-   , output                                       mem_cmd_v_o
-   , input                                        mem_cmd_yumi_i
+   , output  [cce_io_msg_width_lp-1:0]            io_cmd_o
+   , output                                       io_cmd_v_o
+   , input                                        io_cmd_yumi_i
 
-   , input [cce_mem_msg_width_lp-1:0]             mem_resp_i
-   , input                                        mem_resp_v_i
-   , output                                       mem_resp_ready_o
+   , input [cce_io_msg_width_lp-1:0]              io_resp_i
+   , input                                        io_resp_v_i
+   , output                                       io_resp_ready_o
 
    // NOC interface
    , input [bsg_ready_and_link_sif_width_lp-1:0]  cmd_link_i
@@ -48,7 +44,7 @@ module bp_me_cce_to_wormhole_link_bidir
    , output [bsg_ready_and_link_sif_width_lp-1:0] resp_link_o
    );
 
-`declare_bsg_ready_and_link_sif_s(mem_noc_flit_width_p, bsg_ready_and_link_sif_s);
+`declare_bsg_ready_and_link_sif_s(io_noc_flit_width_p, bsg_ready_and_link_sif_s);
 bsg_ready_and_link_sif_s cmd_link_cast_i, cmd_link_cast_o;
 bsg_ready_and_link_sif_s resp_link_cast_i, resp_link_cast_o;
 
@@ -77,26 +73,22 @@ assign resp_link_cast_o    = '{data          : client_resp_link_lo.data
                                ,ready_and_rev: master_resp_link_lo.ready_and_rev
                                };
 
-bp_me_cce_to_wormhole_link_master
+bp_me_cce_to_io_link_master
  #(.bp_params_p(bp_params_p))
   master_link
   (.clk_i(clk_i)
   ,.reset_i(reset_i)
 
-  ,.mem_cmd_i(mem_cmd_i)
-  ,.mem_cmd_v_i(mem_cmd_v_i)
-  ,.mem_cmd_ready_o(mem_cmd_ready_o)
+  ,.io_cmd_i(io_cmd_i)
+  ,.io_cmd_v_i(io_cmd_v_i)
+  ,.io_cmd_ready_o(io_cmd_ready_o)
 
-  ,.mem_resp_o(mem_resp_o)
-  ,.mem_resp_v_o(mem_resp_v_o)
-  ,.mem_resp_yumi_i(mem_resp_yumi_i)
+  ,.io_resp_o(io_resp_o)
+  ,.io_resp_v_o(io_resp_v_o)
+  ,.io_resp_yumi_i(io_resp_yumi_i)
 
-  ,.my_did_i(my_did_i)
   ,.my_cord_i(my_cord_i)
-  ,.my_cid_i(my_cid_i)
-  ,.dst_did_i(dst_did_i)
   ,.dst_cord_i(dst_cord_i)
-  ,.dst_cid_i(dst_cid_i)
   
   ,.cmd_link_i(master_cmd_link_li)
   ,.cmd_link_o(master_cmd_link_lo)
@@ -105,19 +97,19 @@ bp_me_cce_to_wormhole_link_master
   ,.resp_link_o(master_resp_link_lo)
   );
 
-bp_me_cce_to_wormhole_link_client
+bp_me_cce_to_io_link_client
  #(.bp_params_p(bp_params_p))
   client_link
   (.clk_i(clk_i)
   ,.reset_i(reset_i)
 
-  ,.mem_cmd_o(mem_cmd_o)
-  ,.mem_cmd_v_o(mem_cmd_v_o)
-  ,.mem_cmd_yumi_i(mem_cmd_yumi_i)
+  ,.io_cmd_o(io_cmd_o)
+  ,.io_cmd_v_o(io_cmd_v_o)
+  ,.io_cmd_yumi_i(io_cmd_yumi_i)
 
-  ,.mem_resp_i(mem_resp_i)
-  ,.mem_resp_v_i(mem_resp_v_i)
-  ,.mem_resp_ready_o(mem_resp_ready_o)
+  ,.io_resp_i(io_resp_i)
+  ,.io_resp_v_i(io_resp_v_i)
+  ,.io_resp_ready_o(io_resp_ready_o)
 
   ,.cmd_link_i(client_cmd_link_li)
   ,.cmd_link_o(client_cmd_link_lo)

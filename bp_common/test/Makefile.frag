@@ -18,9 +18,27 @@ BP_DEMOS = \
   atomic_demo   \
   mc_sanity_1 \
   mc_sanity_2 \
+  mc_sanity_3 \
   mc_sanity_4 \
+  mc_sanity_6 \
   mc_sanity_8 \
-  mc_sanity_16
+  mc_sanity_16 \
+  mc_template_1 \
+  mc_template_2 \
+  mc_rand_walk_1 \
+  mc_rand_walk_2 \
+  mc_rand_walk_3 \
+  mc_rand_walk_4 \
+  mc_rand_walk_6 \
+  mc_rand_walk_8 \
+  mc_rand_walk_16 \
+  mc_work_share_sort_1 \
+  mc_work_share_sort_2 \
+  mc_work_share_sort_3 \
+  mc_work_share_sort_4 \
+  mc_work_share_sort_6 \
+  mc_work_share_sort_8 \
+  mc_work_share_sort_16
 
 RV64_BENCHMARKS = \
   median   \
@@ -45,15 +63,15 @@ RV64_BENCHMARKS = \
   #rv64si-p-scall
   #rv64si-p-ma_fetch
   #rv64mi-p-ma_fetch
+  #rv64mi-p-access
+  #rv64mi-p-breakpoint
+  #rv64mi-p-ma_addr
+  #rv64mi-p-mcsr
+  #rv64mi-p-scall
+  #rv64si-p-dirty
+  #rv64si-p-icache-alias
+  #rv64si-p-wfi
 RV64_P_TESTS = \
-  rv64mi-p-access  \
-  rv64mi-p-breakpoint \
-  rv64mi-p-ma_addr \
-  rv64mi-p-mcsr    \
-  rv64mi-p-scall   \
-  rv64si-p-dirty   \
-  rv64si-p-icache-alias \
-  rv64si-p-wfi     \
   rv64ui-p-add     \
   rv64ui-p-addi    \
   rv64ui-p-addiw   \

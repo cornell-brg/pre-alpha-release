@@ -10,7 +10,7 @@ module bp_mem_nonsynth_tracer
   import bp_me_pkg::*;
   #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
    `declare_bp_proc_params(bp_params_p)
-   `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p)
+   `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
 
    , parameter trace_file_p = "dram.trace"
    )
@@ -27,7 +27,7 @@ module bp_mem_nonsynth_tracer
    , input                               mem_resp_ready_i
    );
 
-`declare_bp_me_if(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p)
+`declare_bp_me_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
 
 wire unused = &{mem_cmd_v_i, mem_resp_ready_i};
 
@@ -55,8 +55,6 @@ always_ff @(posedge clk_i) begin
         $fwrite(file, "[%t] CMD UCWR: (%x) %b %x\n", $time, mem_cmd_cast_i.addr, mem_cmd_cast_i.size, mem_cmd_cast_i.data);
       e_cce_mem_wb:
         $fwrite(file, "[%t] CMD WB: (%x) %b %x\n", $time, mem_cmd_cast_i.addr, mem_cmd_cast_i.size, mem_cmd_cast_i.data);
-      e_mem_cce_inv:
-        $fwrite(file, "[%t] CMD INV: (%x)\n", $time, mem_resp_cast_i.addr);
       default: 
         $fwrite(file, "[%t] CMD ERROR: unknown cmd_type %x received!", $time, mem_resp_cast_i.msg_type);
     endcase
@@ -73,8 +71,6 @@ always_ff @(posedge clk_i) begin
         $fwrite(file, "[%t] RESP UCWR: (%x) %b\n", $time, mem_resp_cast_i.addr, mem_resp_cast_i.size);
       e_cce_mem_wb:
         $fwrite(file, "[%t] RESP WB: (%x) %b\n", $time, mem_resp_cast_i.addr, mem_resp_cast_i.size);
-      e_mem_cce_inv:
-        $fwrite(file, "[%t] RESP INV: (%x)\n", $time, mem_resp_cast_i.addr);
       default: 
         $fwrite(file, "[%t] ERROR: unknown resp_type %x received!", $time, mem_resp_cast_i.msg_type);
     endcase

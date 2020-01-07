@@ -12,11 +12,12 @@ module testbench
  import bp_be_pkg::*;
  import bp_common_rv64_pkg::*;
  import bp_cce_pkg::*;
+ import bp_me_pkg::*;
  import bp_common_cfg_link_pkg::*;
  import bsg_noc_pkg::*;
  #(parameter bp_params_e bp_params_p = BP_CFG_FLOWVAR // Replaced by the flow with a specific bp_cfg
    `declare_bp_proc_params(bp_params_p)
-   `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p)
+   `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
 
    // Tracing parameters
    , parameter calc_trace_p                = 0
@@ -26,9 +27,10 @@ module testbench
    , parameter npc_trace_p                 = 0
    , parameter dcache_trace_p              = 0
    , parameter vm_trace_p                  = 0
+   , parameter preload_mem_p               = 0
    , parameter skip_init_p                 = 0
 
-   , parameter mem_load_p         = 1
+   , parameter mem_zero_p         = 1
    , parameter mem_file_p         = "prog.mem"
    , parameter mem_cap_in_bytes_p = 2**20
    , parameter [paddr_width_p-1:0] mem_offset_p = paddr_width_p'(32'h8000_0000)
@@ -49,38 +51,54 @@ module testbench
    , input reset_i
    );
 
-`declare_bsg_ready_and_link_sif_s(mem_noc_flit_width_p, bsg_ready_and_link_sif_s);
-`declare_bp_me_if(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p)
+`declare_bsg_ready_and_link_sif_s(io_noc_flit_width_p, bp_io_noc_ral_link_s);
+`declare_bsg_ready_and_link_sif_s(mem_noc_flit_width_p, bp_mem_noc_ral_link_s);
+`declare_bp_me_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
+`declare_bp_io_if(paddr_width_p, dword_width_p, lce_id_width_p)
 
-bsg_ready_and_link_sif_s [E:P] cmd_link_li, cmd_link_lo;
-bsg_ready_and_link_sif_s [E:P] resp_link_li, resp_link_lo;
+bp_io_noc_ral_link_s [E:P] cmd_link_li, cmd_link_lo;
+bp_io_noc_ral_link_s [E:P] resp_link_li, resp_link_lo;
 
-bsg_ready_and_link_sif_s proc_cmd_link_li, proc_cmd_link_lo;
-bsg_ready_and_link_sif_s proc_resp_link_li, proc_resp_link_lo;
+bp_cce_mem_msg_s dram_cmd_li;
+logic            dram_cmd_v_li, dram_cmd_yumi_lo;
+bp_cce_mem_msg_s dram_resp_lo;
+logic            dram_resp_v_lo, dram_resp_ready_li;
 
-bp_cce_mem_msg_s       mem_resp_li;
-logic                  mem_resp_v_li, mem_resp_ready_lo;
-bp_cce_mem_msg_s       mem_cmd_lo;
-logic                  mem_cmd_v_lo, mem_cmd_yumi_li;
+bp_io_noc_ral_link_s proc_cmd_link_li, proc_cmd_link_lo;
+bp_io_noc_ral_link_s proc_resp_link_li, proc_resp_link_lo;
 
-bp_cce_mem_msg_s       dram_resp_lo;
-logic                  dram_resp_v_lo, dram_resp_ready_li;
-bp_cce_mem_msg_s       dram_cmd_li;
-logic                  dram_cmd_v_li, dram_cmd_yumi_lo;
+bp_mem_noc_ral_link_s bypass_cmd_link_lo, bypass_resp_link_li;
 
-bp_cce_mem_msg_s       host_resp_lo;
-logic                  host_resp_v_lo, host_resp_ready_li;
-bp_cce_mem_msg_s       host_cmd_li;
+bp_cce_io_msg_s        host_cmd_li;
 logic                  host_cmd_v_li, host_cmd_yumi_lo;
+bp_cce_io_msg_s        host_resp_lo;
+logic                  host_resp_v_lo, host_resp_ready_li;
 
-bp_cce_mem_msg_s       cfg_cmd_lo;
+bp_cce_io_msg_s        load_cmd_lo;
+logic                  load_cmd_v_lo, load_cmd_ready_li;
+bp_cce_io_msg_s        load_resp_li;
+logic                  load_resp_v_li, load_resp_ready_lo;
+
+bp_cce_io_msg_s        cfg_cmd_lo;
 logic                  cfg_cmd_v_lo, cfg_cmd_ready_li;
-bp_cce_mem_msg_s       cfg_resp_li;
+bp_cce_io_msg_s        cfg_resp_li;
 logic                  cfg_resp_v_li, cfg_resp_ready_lo;
 
-wire [mem_noc_did_width_p-1:0] dram_did_li = '1;
-wire [mem_noc_did_width_p-1:0] proc_did_li = 1;
+bp_cce_io_msg_s        nbf_cmd_lo;
+logic                  nbf_cmd_v_lo, nbf_cmd_ready_li;
+bp_cce_io_msg_s        nbf_resp_li;
+logic                  nbf_resp_v_li, nbf_resp_ready_lo;
 
+wire [io_noc_did_width_p-1:0] dram_did_li = '1;
+wire [io_noc_did_width_p-1:0] proc_did_li = 1;
+
+bp_io_noc_ral_link_s stub_cmd_link_li, stub_resp_link_li;
+bp_io_noc_ral_link_s stub_cmd_link_lo, stub_resp_link_lo;
+assign stub_cmd_link_li  = '0;
+assign stub_resp_link_li = '0;
+
+bp_mem_noc_ral_link_s stub_bypass_cmd_link_lo, stub_bypass_resp_link_li;
+assign stub_bypass_resp_link_li = '0;
 // Chip
 wrapper
  #(.bp_params_p(bp_params_p))
@@ -91,51 +109,22 @@ wrapper
    ,.coh_clk_i(clk_i)
    ,.coh_reset_i(reset_i)
 
+   ,.io_clk_i(clk_i)
+   ,.io_reset_i(reset_i)
+
    ,.mem_clk_i(clk_i)
    ,.mem_reset_i(reset_i)
 
    ,.my_did_i(proc_did_li)
 
-   ,.prev_cmd_link_i('0)
-   ,.prev_cmd_link_o()
+   ,.io_cmd_link_i({proc_cmd_link_li, stub_cmd_link_li})
+   ,.io_cmd_link_o({proc_cmd_link_lo, stub_cmd_link_lo})
 
-   ,.prev_resp_link_i('0)
-   ,.prev_resp_link_o()
+   ,.io_resp_link_i({proc_resp_link_li, stub_resp_link_li})
+   ,.io_resp_link_o({proc_resp_link_lo, stub_resp_link_lo})
 
-   ,.next_cmd_link_i(proc_cmd_link_li)
-   ,.next_cmd_link_o(proc_cmd_link_lo)
-
-   ,.next_resp_link_i(proc_resp_link_li)
-   ,.next_resp_link_o(proc_resp_link_lo)
-   );
-
-assign cmd_link_li[W]  = proc_cmd_link_lo;
-assign cmd_link_li[E]  = '0;
-assign resp_link_li[W] = proc_resp_link_lo;
-assign resp_link_li[E] = '0;
-
-assign proc_cmd_link_li = cmd_link_lo[W];
-assign proc_resp_link_li = resp_link_lo[W];
-bp_host_remote_domain_proxy_node
- #(.bp_params_p(bp_params_p))
- rdp
-  (.clk_i(clk_i)
-   ,.reset_i(reset_i)
-
-   ,.my_did_i(dram_did_li)
-   ,.my_cord_i(mem_noc_cord_width_p'(dram_did_li))
-
-   ,.on_cmd_link_i(cmd_link_li[P])
-   ,.on_cmd_link_o(cmd_link_lo[P])
-
-   ,.on_resp_link_i(resp_link_li[P])
-   ,.on_resp_link_o(resp_link_lo[P])
-
-   ,.off_cmd_link_i(cmd_link_li[E:W])
-   ,.off_cmd_link_o(cmd_link_lo[E:W])
-
-   ,.off_resp_link_i(resp_link_li[E:W])
-   ,.off_resp_link_o(resp_link_lo[E:W])
+   ,.bypass_cmd_link_o({bypass_cmd_link_lo, stub_bypass_cmd_link_lo})
+   ,.bypass_resp_link_i({bypass_resp_link_li, stub_bypass_resp_link_li})
    );
 
   bind bp_be_top
@@ -330,76 +319,89 @@ bind bp_be_top
         ,.mem_cmd_ready_i(mem_cmd_ready_i)
         );
 
-wire [mem_noc_did_width_p-1:0]  dst_did_lo  = 1;
-wire [mem_noc_cord_width_p-1:0] dst_cord_lo = '1;
-wire [mem_noc_cid_width_p-1:0]  dst_cid_lo  = '0;
+wire [io_noc_cord_width_p-1:0] dst_cord_lo = 1;
 
-// DRAM + link 
-bp_me_cce_to_wormhole_link_bidir
+// Host + cfg link 
+bp_me_cce_to_io_link_bidir
  #(.bp_params_p(bp_params_p))
-  bidir_link
+ host_cfg_link
   (.clk_i(clk_i)
-  ,.reset_i(reset_i)
+   ,.reset_i(reset_i)
 
-  ,.mem_cmd_i(cfg_cmd_lo)
-  ,.mem_cmd_v_i(cfg_cmd_ready_li & cfg_cmd_v_lo)
-  ,.mem_cmd_ready_o(cfg_cmd_ready_li)
+   ,.io_cmd_i(load_cmd_lo)
+   ,.io_cmd_v_i(load_cmd_v_lo)
+   ,.io_cmd_ready_o(load_cmd_ready_li)
 
-  ,.mem_resp_o(cfg_resp_li)
-  ,.mem_resp_v_o(cfg_resp_v_li)
-  ,.mem_resp_yumi_i(cfg_resp_ready_lo & cfg_resp_v_li)
+   ,.io_resp_o(load_resp_li)
+   ,.io_resp_v_o(load_resp_v_li)
+   ,.io_resp_yumi_i(load_resp_ready_lo & load_resp_v_li) // Always accept responses
 
-  ,.mem_cmd_o(mem_cmd_lo)
-  ,.mem_cmd_v_o(mem_cmd_v_lo)
-  ,.mem_cmd_yumi_i(mem_cmd_yumi_li)
+   ,.io_cmd_o(host_cmd_li)
+   ,.io_cmd_v_o(host_cmd_v_li)
+   ,.io_cmd_yumi_i(host_cmd_yumi_lo)
 
-  ,.mem_resp_i(mem_resp_li)
-  ,.mem_resp_v_i(mem_resp_v_li)
-  ,.mem_resp_ready_o(mem_resp_ready_lo)
+   ,.io_resp_i(host_resp_lo)
+   ,.io_resp_v_i(host_resp_v_lo)
+   ,.io_resp_ready_o(host_resp_ready_li)
 
-  ,.my_did_i(dram_did_li)
-  ,.my_cord_i(mem_noc_cord_width_p'(dram_did_li))
-  ,.my_cid_i(mem_noc_cid_width_p'(0))
-  ,.dst_did_i(dst_did_lo)
-  ,.dst_cord_i(dst_cord_lo)
-  ,.dst_cid_i(dst_cid_lo)
-     
-  ,.cmd_link_i(cmd_link_lo[P])
-  ,.cmd_link_o(cmd_link_li[P])
+   ,.my_cord_i(io_noc_cord_width_p'(dram_did_li))
+   ,.dst_cord_i(dst_cord_lo)
+      
+   ,.cmd_link_i(proc_cmd_link_lo)
+   ,.cmd_link_o(proc_cmd_link_li)
 
-  ,.resp_link_i(resp_link_lo[P])
-  ,.resp_link_o(resp_link_li[P])
-  );
+   ,.resp_link_i(proc_resp_link_lo)
+   ,.resp_link_o(proc_resp_link_li)
+   );
+
+bp_me_cce_to_mem_link_client
+ #(.bp_params_p(bp_params_p))
+ dram_link
+  (.clk_i(clk_i)
+   ,.reset_i(reset_i)
+
+   ,.mem_cmd_o(dram_cmd_li)
+   ,.mem_cmd_v_o(dram_cmd_v_li)
+   ,.mem_cmd_yumi_i(dram_cmd_yumi_lo)
+
+   ,.mem_resp_i(dram_resp_lo)
+   ,.mem_resp_v_i(dram_resp_v_lo)
+   ,.mem_resp_ready_o(dram_resp_ready_li)
+
+   ,.cmd_link_i(bypass_cmd_link_lo)
+   ,.resp_link_o(bypass_resp_link_li)
+   );
 
 bp_mem
-#(.bp_params_p(bp_params_p)
-  ,.mem_cap_in_bytes_p(mem_cap_in_bytes_p)
-  ,.mem_load_p(mem_load_p)
-  ,.mem_file_p(mem_file_p)
-  ,.mem_offset_p(mem_offset_p)
-
-  ,.use_max_latency_p(use_max_latency_p)
-  ,.use_random_latency_p(use_random_latency_p)
-  ,.use_dramsim2_latency_p(use_dramsim2_latency_p)
-  ,.max_latency_p(max_latency_p)
-
-  ,.dram_clock_period_in_ps_p(dram_clock_period_in_ps_p)
-  ,.dram_cfg_p(dram_cfg_p)
-  ,.dram_sys_cfg_p(dram_sys_cfg_p)
-  ,.dram_capacity_p(dram_capacity_p)
-  )
-mem
- (.clk_i(clk_i)
-  ,.reset_i(reset_i)
-
-  ,.mem_cmd_i(dram_cmd_li)
-  ,.mem_cmd_v_i(dram_cmd_v_li)
-  ,.mem_cmd_yumi_o(dram_cmd_yumi_lo)
-
-  ,.mem_resp_o(dram_resp_lo)
-  ,.mem_resp_v_o(dram_resp_v_lo)
-  ,.mem_resp_ready_i(dram_resp_ready_li)
-  );
+ #(.bp_params_p(bp_params_p)
+   ,.mem_cap_in_bytes_p(mem_cap_in_bytes_p)
+   ,.mem_load_p(preload_mem_p)
+   ,.mem_zero_p(mem_zero_p)
+   ,.mem_file_p(mem_file_p)
+   ,.mem_offset_p(mem_offset_p)
+ 
+   ,.use_max_latency_p(use_max_latency_p)
+   ,.use_random_latency_p(use_random_latency_p)
+   ,.use_dramsim2_latency_p(use_dramsim2_latency_p)
+   ,.max_latency_p(max_latency_p)
+ 
+   ,.dram_clock_period_in_ps_p(dram_clock_period_in_ps_p)
+   ,.dram_cfg_p(dram_cfg_p)
+   ,.dram_sys_cfg_p(dram_sys_cfg_p)
+   ,.dram_capacity_p(dram_capacity_p)
+   )
+ mem
+  (.clk_i(clk_i)
+   ,.reset_i(reset_i)
+ 
+   ,.mem_cmd_i(dram_cmd_li)
+   ,.mem_cmd_v_i(dram_cmd_v_li)
+   ,.mem_cmd_yumi_o(dram_cmd_yumi_lo)
+ 
+   ,.mem_resp_o(dram_resp_lo)
+   ,.mem_resp_v_o(dram_resp_v_lo)
+   ,.mem_resp_ready_i(dram_resp_ready_li)
+   );
 
 logic [num_core_p-1:0] program_finish;
 bp_nonsynth_host
@@ -408,50 +410,41 @@ bp_nonsynth_host
   (.clk_i(clk_i)
    ,.reset_i(reset_i)
 
-   ,.mem_cmd_i(host_cmd_li)
-   ,.mem_cmd_v_i(host_cmd_v_li)
-   ,.mem_cmd_yumi_o(host_cmd_yumi_lo)
+   ,.io_cmd_i(host_cmd_li)
+   ,.io_cmd_v_i(host_cmd_v_li)
+   ,.io_cmd_yumi_o(host_cmd_yumi_lo)
 
-   ,.mem_resp_o(host_resp_lo)
-   ,.mem_resp_v_o(host_resp_v_lo)
-   ,.mem_resp_ready_i(host_resp_ready_li)
+   ,.io_resp_o(host_resp_lo)
+   ,.io_resp_v_o(host_resp_v_lo)
+   ,.io_resp_ready_i(host_resp_ready_li)
 
    ,.program_finish_o(program_finish)
    );
 
-bp_nonsynth_if_verif
- #(.bp_params_p(bp_params_p))
- if_verif
-  ();
+logic nbf_done_lo;
+if (preload_mem_p == 0)
+  begin : preload
+    bp_nonsynth_nbf_loader
+     #(.bp_params_p(bp_params_p))
+     nbf_loader
+      (.clk_i(clk_i)
+       ,.reset_i(reset_i)
 
-// MMIO arbitration 
-//   Should this be on its own I/O router?
-logic req_outstanding_r;
-bsg_dff_reset_en
- #(.width_p(1))
- req_outstanding_reg
-  (.clk_i(clk_i)
-   ,.reset_i(reset_i)
-   ,.en_i(mem_cmd_yumi_li | mem_resp_v_li)
+       ,.io_cmd_o(nbf_cmd_lo)
+       ,.io_cmd_v_o(nbf_cmd_v_lo)
+       ,.io_cmd_yumi_i(nbf_cmd_ready_li & nbf_cmd_v_lo)
 
-   ,.data_i(mem_cmd_yumi_li)
-   ,.data_o(req_outstanding_r)
-   );
+       ,.io_resp_i(nbf_resp_li)
+       ,.io_resp_v_i(nbf_resp_v_li)
+       ,.io_resp_ready_o(nbf_resp_ready_lo)
 
-wire host_cmd_not_dram      = mem_cmd_v_lo & (mem_cmd_lo.addr < dram_base_addr_gp);
-
-assign host_cmd_li          = mem_cmd_lo;
-assign host_cmd_v_li        = mem_cmd_v_lo & host_cmd_not_dram & ~req_outstanding_r;
-assign dram_cmd_li          = mem_cmd_lo;
-assign dram_cmd_v_li        = mem_cmd_v_lo & ~host_cmd_not_dram & ~req_outstanding_r;
-assign mem_cmd_yumi_li      = host_cmd_not_dram 
-                              ? host_cmd_yumi_lo 
-                              : dram_cmd_yumi_lo;
-
-assign mem_resp_li = host_resp_v_lo ? host_resp_lo : dram_resp_lo;
-assign mem_resp_v_li = host_resp_v_lo | dram_resp_v_lo;
-assign host_resp_ready_li = mem_resp_ready_lo;
-assign dram_resp_ready_li = mem_resp_ready_lo;
+       ,.done_o(nbf_done_lo)
+       );
+  end
+else
+  begin : no_preload
+    assign nbf_done_lo = 1'b1;
+  end
 
 localparam cce_instr_ram_addr_width_lp = `BSG_SAFE_CLOG2(num_cce_instr_ram_els_p);
 bp_cce_mmio_cfg_loader
@@ -460,19 +453,59 @@ bp_cce_mmio_cfg_loader
     ,.inst_ram_addr_width_p(cce_instr_ram_addr_width_lp)
     ,.inst_ram_els_p(num_cce_instr_ram_els_p)
     ,.skip_ram_init_p(skip_init_p)
-  )
+    )
   cfg_loader
   (.clk_i(clk_i)
-   ,.reset_i(reset_i)
+   ,.reset_i(reset_i | ~nbf_done_lo)
    
-   ,.mem_cmd_o(cfg_cmd_lo)
-   ,.mem_cmd_v_o(cfg_cmd_v_lo)
-   ,.mem_cmd_yumi_i(cfg_cmd_ready_li & cfg_cmd_v_lo)
+   ,.io_cmd_o(cfg_cmd_lo)
+   ,.io_cmd_v_o(cfg_cmd_v_lo)
+   ,.io_cmd_yumi_i(cfg_cmd_ready_li & cfg_cmd_v_lo)
    
-   ,.mem_resp_i(cfg_resp_li)
-   ,.mem_resp_v_i(cfg_resp_v_li)
-   ,.mem_resp_ready_o(cfg_resp_ready_lo)
+   ,.io_resp_i(cfg_resp_li)
+   ,.io_resp_v_i(cfg_resp_v_li)
+   ,.io_resp_ready_o(cfg_resp_ready_lo)
   );
+
+// CFG and NBF are mutex, so we can just use fixed arbitration here
+always_comb
+  if (nbf_done_lo)
+    begin
+      load_cmd_lo = cfg_cmd_lo;
+      load_cmd_v_lo = cfg_cmd_v_lo;
+
+      nbf_cmd_ready_li = 1'b0;
+      cfg_cmd_ready_li = load_cmd_ready_li;
+
+      nbf_resp_li = '0;
+      nbf_resp_v_li = 1'b0;
+
+      cfg_resp_li = load_resp_li;
+      cfg_resp_v_li = load_resp_v_li;
+
+      load_resp_ready_lo = cfg_resp_ready_lo;
+    end
+  else
+    begin
+      load_cmd_lo = nbf_cmd_lo;
+      load_cmd_v_lo = nbf_cmd_v_lo;
+
+      nbf_cmd_ready_li = load_cmd_ready_li;
+      cfg_cmd_ready_li = 1'b0;
+
+      nbf_resp_li = load_resp_li;
+      nbf_resp_v_li = load_resp_v_li;
+
+      cfg_resp_li = '0;
+      cfg_resp_v_li = 1'b0;
+
+      load_resp_ready_lo = nbf_resp_ready_lo;
+    end
+
+bp_nonsynth_if_verif
+ #(.bp_params_p(bp_params_p))
+ if_verif
+  ();
 
 endmodule
 

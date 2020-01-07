@@ -32,14 +32,14 @@ module bp_cce_buffered
     `declare_bp_proc_params(bp_params_p)
 
     // Derived parameters
-    , localparam cfg_bus_width_lp      = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+    , localparam cfg_bus_width_lp      = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
     , localparam block_size_in_bytes_lp = (cce_block_width_p/8)
     , localparam lg_num_cce_lp          = `BSG_SAFE_CLOG2(num_cce_p)
     , localparam wg_per_cce_lp          = (lce_sets_p / num_cce_p)
 
     // interface widths
-    `declare_bp_lce_cce_if_widths(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
-    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p)
+    `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
+    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
   )
   (input                                                   clk_i
    , input                                                 reset_i
@@ -72,17 +72,9 @@ module bp_cce_buffered
    , input                                                 mem_resp_v_i
    , output logic                                          mem_resp_ready_o
 
-   , input [cce_mem_msg_width_lp-1:0]                      mem_cmd_i
-   , input                                                 mem_cmd_v_i
-   , output logic                                          mem_cmd_ready_o
-
    , output logic [cce_mem_msg_width_lp-1:0]               mem_cmd_o
    , output logic                                          mem_cmd_v_o
    , input                                                 mem_cmd_yumi_i
-
-   , output logic [cce_mem_msg_width_lp-1:0]               mem_resp_o
-   , output logic                                          mem_resp_v_o
-   , input                                                 mem_resp_yumi_i
   );
 
   logic [lce_cce_req_width_lp-1:0]               lce_req_to_cce;
@@ -94,15 +86,9 @@ module bp_cce_buffered
   logic [cce_mem_msg_width_lp-1:0]               mem_resp_to_cce;
   logic                                          mem_resp_v_to_cce;
   logic                                          mem_resp_yumi_from_cce;
-  logic [cce_mem_msg_width_lp-1:0]               mem_cmd_to_cce;
-  logic                                          mem_cmd_v_to_cce;
-  logic                                          mem_cmd_yumi_from_cce;
   logic [cce_mem_msg_width_lp-1:0]               mem_cmd_from_cce;
   logic                                          mem_cmd_v_from_cce;
   logic                                          mem_cmd_ready_to_cce;
-  logic [cce_mem_msg_width_lp-1:0]               mem_resp_from_cce;
-  logic                                          mem_resp_v_from_cce;
-  logic                                          mem_resp_ready_to_cce;
 
   // Inbound LCE to CCE
   bsg_two_fifo
@@ -152,20 +138,6 @@ module bp_cce_buffered
       ,.yumi_i(mem_resp_yumi_from_cce)
       );
 
-  bsg_two_fifo
-    #(.width_p(cce_mem_msg_width_lp)
-      )
-    mem_cce_cmd_fifo
-     (.clk_i(clk_i)
-      ,.reset_i(reset_i)
-      ,.v_i(mem_cmd_v_i)
-      ,.data_i(mem_cmd_i)
-      ,.ready_o(mem_cmd_ready_o)
-      ,.v_o(mem_cmd_v_to_cce)
-      ,.data_o(mem_cmd_to_cce)
-      ,.yumi_i(mem_cmd_yumi_from_cce)
-      );
-
   // Outbound CCE to Mem
   bsg_two_fifo
     #(.width_p(cce_mem_msg_width_lp)
@@ -179,20 +151,6 @@ module bp_cce_buffered
       ,.v_o(mem_cmd_v_o)
       ,.data_o(mem_cmd_o)
       ,.yumi_i(mem_cmd_yumi_i)
-      );
-
-  bsg_two_fifo
-    #(.width_p(cce_mem_msg_width_lp)
-      )
-    cce_mem_resp_fifo
-     (.clk_i(clk_i)
-      ,.reset_i(reset_i)
-      ,.v_i(mem_resp_v_from_cce)
-      ,.data_i(mem_resp_from_cce)
-      ,.ready_o(mem_resp_ready_to_cce)
-      ,.v_o(mem_resp_v_o)
-      ,.data_o(mem_resp_o)
-      ,.yumi_i(mem_resp_yumi_i)
       );
 
   // CCE
@@ -222,17 +180,11 @@ module bp_cce_buffered
       ,.mem_resp_i(mem_resp_to_cce)
       ,.mem_resp_v_i(mem_resp_v_to_cce)
       ,.mem_resp_yumi_o(mem_resp_yumi_from_cce)
-      ,.mem_cmd_i(mem_cmd_to_cce)
-      ,.mem_cmd_v_i(mem_cmd_v_to_cce)
-      ,.mem_cmd_yumi_o(mem_cmd_yumi_from_cce)
 
       // From CCE
       ,.mem_cmd_o(mem_cmd_from_cce)
       ,.mem_cmd_v_o(mem_cmd_v_from_cce)
       ,.mem_cmd_ready_i(mem_cmd_ready_to_cce)
-      ,.mem_resp_o(mem_resp_from_cce)
-      ,.mem_resp_v_o(mem_resp_v_from_cce)
-      ,.mem_resp_ready_i(mem_resp_ready_to_cce)
       );
 
 endmodule

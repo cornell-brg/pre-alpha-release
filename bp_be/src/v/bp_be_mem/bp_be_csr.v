@@ -9,8 +9,7 @@ module bp_be_csr
     , localparam csr_cmd_width_lp = `bp_be_csr_cmd_width
     , localparam ecode_dec_width_lp = `bp_be_ecode_dec_width
 
-    , localparam hartid_width_lp = `BSG_SAFE_CLOG2(num_core_p)
-    , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+    , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
 
     , localparam trap_pkt_width_lp = `bp_be_trap_pkt_width(vaddr_width_p)
     )
@@ -31,7 +30,7 @@ module bp_be_csr
     , output logic                      illegal_instr_o
 
     // Misc interface
-    , input [hartid_width_lp-1:0]       hartid_i
+    , input [core_id_width_p-1:0]       hartid_i
     , input                             instret_i
 
     , input                             bubble_v_i
@@ -68,7 +67,7 @@ module bp_be_csr
     );
 
 // Declare parameterizable structs
-`declare_bp_cfg_bus_s(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p);
+`declare_bp_cfg_bus_s(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p);
 `declare_bp_be_internal_if_structs(vaddr_width_p, paddr_width_p, asid_width_p, branch_metadata_fwd_width_p); 
 `declare_bp_be_mmu_structs(vaddr_width_p, ppn_width_p, lce_sets_p, cce_block_width_p/8)
 
@@ -98,10 +97,6 @@ rv64_mip_s sip_wmask_li, sip_rmask_li, mip_wmask_li;
 logic [rv64_priv_width_gp-1:0] priv_mode_n, priv_mode_r;
 logic debug_mode_n, debug_mode_r;
 logic translation_en_n, translation_en_r;
-
-assign priv_mode_o      = priv_mode_r;
-assign translation_en_o = translation_en_r
-                          | (mstatus_lo.mprv & (mstatus_lo.mpp < `PRIV_MODE_M) & (satp_lo.mode == 4'd8));
 
 wire is_debug_mode = debug_mode_r;
 // Debug Mode grants pseudo M-mode permission
@@ -717,6 +712,10 @@ assign trap_pkt_cast_o.translation_en_n = translation_en_n;
 assign trap_pkt_cast_o.exception        = exception_v_o;
 assign trap_pkt_cast_o._interrupt       = interrupt_v_o;
 assign trap_pkt_cast_o.eret             = ret_v_o;
+
+assign priv_mode_o      = priv_mode_r;
+assign translation_en_o = translation_en_r
+                          | (mstatus_lo.mprv & (mstatus_lo.mpp < `PRIV_MODE_M) & (satp_lo.mode == 4'd8));
 
 endmodule
 
