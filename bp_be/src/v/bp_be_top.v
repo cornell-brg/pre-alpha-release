@@ -15,10 +15,10 @@ module bp_be_top
  #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
    `declare_bp_proc_params(bp_params_p)
    `declare_bp_fe_be_if_widths(vaddr_width_p, paddr_width_p, asid_width_p, branch_metadata_fwd_width_p)
-   `declare_bp_lce_cce_if_widths(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
+   `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
 
    // Default parameters 
-   , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+   , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
    
    // VM parameters
    , localparam tlb_entry_width_lp = `bp_pte_entry_leaf_width(paddr_width_p)
@@ -57,7 +57,7 @@ module bp_be_top
 
    , input [lce_cmd_width_lp-1:0]            lce_cmd_i
    , input                                   lce_cmd_v_i
-   , output                                  lce_cmd_ready_o
+   , output                                  lce_cmd_yumi_o
 
    , output [lce_cmd_width_lp-1:0]           lce_cmd_o
    , output                                  lce_cmd_v_o
@@ -70,7 +70,7 @@ module bp_be_top
 
 // Declare parameterized structures
 `declare_bp_be_mmu_structs(vaddr_width_p, ptag_width_p, lce_sets_p, cce_block_width_p)
-`declare_bp_cfg_bus_s(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p);
+`declare_bp_cfg_bus_s(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p);
 `declare_bp_be_internal_if_structs(vaddr_width_p, paddr_width_p, asid_width_p, branch_metadata_fwd_width_p);
 
 // Casting
@@ -102,9 +102,11 @@ logic chk_dispatch_v;
 logic [vaddr_width_p-1:0] chk_tvec_li;
 logic [vaddr_width_p-1:0] chk_epc_li;
 
-logic chk_trap_v_li, chk_ret_v_li, chk_tlb_fence_li, chk_ifence_li;
+logic chk_trap_v_li, chk_ret_v_li, chk_tlb_fence_li, chk_fencei_li;
 
 logic credits_full_lo, credits_empty_lo;
+logic debug_mode_lo;
+logic single_step_lo;
 logic accept_irq_lo;
 
 logic                     instret_mem3;
@@ -136,6 +138,8 @@ bp_be_checker_top
    ,.mmu_cmd_ready_i(mmu_cmd_rdy)
    ,.credits_full_i(credits_full_lo)
    ,.credits_empty_i(credits_empty_lo)
+   ,.debug_mode_i(debug_mode_lo)
+   ,.single_step_i(single_step_lo)
    ,.accept_irq_i(accept_irq_lo)
 
    ,.fe_cmd_o(fe_cmd_o)
@@ -152,6 +156,7 @@ bp_be_checker_top
    ,.dispatch_pkt_o(dispatch_pkt)
 
    ,.tlb_fence_i(chk_tlb_fence_li)
+   ,.fencei_i(chk_fencei_li)
    
    ,.itlb_fill_v_i(itlb_fill_v)
    ,.itlb_fill_vaddr_i(itlb_fill_vaddr)
@@ -228,7 +233,7 @@ bp_be_mem_top
 
     ,.lce_cmd_i(lce_cmd_i)
     ,.lce_cmd_v_i(lce_cmd_v_i)
-    ,.lce_cmd_ready_o(lce_cmd_ready_o)
+    ,.lce_cmd_yumi_o(lce_cmd_yumi_o)
 
     ,.lce_cmd_o(lce_cmd_o)
     ,.lce_cmd_v_o(lce_cmd_v_o)
@@ -238,6 +243,8 @@ bp_be_mem_top
 
     ,.credits_full_o(credits_full_lo)
     ,.credits_empty_o(credits_empty_lo)
+    ,.debug_mode_o(debug_mode_lo)
+    ,.single_step_o(single_step_lo)
 
     ,.timer_irq_i(timer_irq_i)
     ,.software_irq_i(software_irq_i)
@@ -245,9 +252,8 @@ bp_be_mem_top
     ,.accept_irq_o(accept_irq_lo)
 
     ,.trap_pkt_o(trap_pkt)
-    // Should connect priv mode to checker for shadow privilege mode
-    ,.priv_mode_o()
     ,.tlb_fence_o(chk_tlb_fence_li)
+    ,.fencei_o(chk_fencei_li)
     );
 
 endmodule

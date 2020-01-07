@@ -43,7 +43,7 @@ module bp_cce_pc
     `declare_bp_proc_params(bp_params_p)
     // Derived parameters
     , localparam inst_width_lp     = `bp_cce_inst_width
-    , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+    , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
   )
   (input                                         clk_i
    , input                                       reset_i
@@ -57,6 +57,9 @@ module bp_cce_pc
    // Directory busy signal
    , input                                       dir_busy_i
 
+   // Msg Inv busy signal
+   , input                                       inv_busy_i
+
    // control from decode
    , input                                       pc_stall_i
    , input [cce_pc_width_p-1:0]                  pc_branch_target_i
@@ -66,7 +69,7 @@ module bp_cce_pc
    , output logic                                inst_v_o
   );
 
-  `declare_bp_cfg_bus_s(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p);
+  `declare_bp_cfg_bus_s(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p);
   bp_cfg_bus_s cfg_bus_cast_i;
   assign cfg_bus_cast_i = cfg_bus_i;
 
@@ -160,7 +163,7 @@ module bp_cce_pc
         // The PC stalls and the current instruction is presented in the next cycle if
         // the decoder stalls execution, the directory is finishing a read, or the invalidtion
         // instruction is still executing.
-        if (pc_stall_i | dir_busy_i) begin
+        if (pc_stall_i | dir_busy_i | inv_busy_i) begin
           // when stalling, hold executing pc and ram addr registers constant
           ex_pc_n = ex_pc_r;
           // feed the currently executing pc as input to instruction ram

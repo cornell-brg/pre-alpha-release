@@ -81,9 +81,10 @@ module bp_be_dcache
  #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
    `declare_bp_proc_params(bp_params_p)
    
+    , parameter lock_max_limit_p=8
     , parameter debug_p=0 
 
-    , localparam cfg_bus_width_lp= `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+    , localparam cfg_bus_width_lp= `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
     , localparam block_size_in_words_lp=lce_assoc_p
     , localparam data_mask_width_lp=(dword_width_p>>3)
     , localparam byte_offset_width_lp=`BSG_SAFE_CLOG2(dword_width_p>>3)
@@ -95,13 +96,12 @@ module bp_be_dcache
     , localparam way_id_width_lp=`BSG_SAFE_CLOG2(lce_assoc_p)
   
     , localparam lce_data_width_lp=(lce_assoc_p*dword_width_p)
-    , localparam lce_id_width_lp=`BSG_SAFE_CLOG2(num_lce_p)
 
     , localparam dcache_pkt_width_lp=`bp_be_dcache_pkt_width(page_offset_width_p,dword_width_p)
     , localparam tag_info_width_lp=`bp_be_dcache_tag_info_width(tag_width_lp)
     , localparam stat_info_width_lp=`bp_be_dcache_stat_info_width(lce_assoc_p)
    
-    `declare_bp_lce_cce_if_widths(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p) 
+    `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p) 
   )
   (
     input clk_i
@@ -121,6 +121,9 @@ module bp_be_dcache
     , input [ptag_width_lp-1:0] ptag_i
     , input uncached_i
 
+    , output load_op_tl_o
+    , output store_op_tl_o
+
     // ctrl
     , output logic cache_miss_o
     , input poison_i
@@ -137,7 +140,7 @@ module bp_be_dcache
     // CCE-LCE interface
     , input [lce_cmd_width_lp-1:0] lce_cmd_i
     , input lce_cmd_v_i
-    , output logic lce_cmd_ready_o
+    , output logic lce_cmd_yumi_o
 
     // LCE-LCE interface
     , output logic [lce_cmd_width_lp-1:0] lce_cmd_o
@@ -146,12 +149,9 @@ module bp_be_dcache
 
     , output credits_full_o
     , output credits_empty_o
-
-    , output load_access_fault_o
-    , output store_access_fault_o
   );
 
-  `declare_bp_cfg_bus_s(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p);
+  `declare_bp_cfg_bus_s(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p);
   bp_cfg_bus_s cfg_bus_cast_i;
   assign cfg_bus_cast_i = cfg_bus_i;
 
@@ -331,6 +331,9 @@ module bp_be_dcache
         );
   end
 
+  assign store_op_tl_o = store_op_tl_r;
+  assign load_op_tl_o  = load_op_tl_r;
+
   // TV stage
   //
   logic v_tv_r;
@@ -460,15 +463,16 @@ module bp_be_dcache
   logic [dword_width_p-1:0] uncached_load_data_r;
 
   // load reserved / store conditional
-  logic lr_miss_tv;
+  logic lr_hit_tv, lr_miss_tv;
   logic sc_success;
   logic sc_fail;
   logic [ptag_width_lp-1:0]  load_reserved_tag_r;
   logic [index_width_lp-1:0] load_reserved_index_r;
   logic load_reserved_v_r;
 
-  // Upgrade if a load reserved and we don't have the line in exclusive state
-  assign lr_miss_tv = v_tv_r & lr_op_tv_r & load_hit & ~store_hit;
+  // Load reserved misses if not in exclusive or modified (whether load hit or not)
+  assign lr_hit_tv = v_tv_r & lr_op_tv_r & store_hit;
+  assign lr_miss_tv = v_tv_r & lr_op_tv_r & ~store_hit;
   // Succeed if the address matches and we have a store hit
   assign sc_success  = v_tv_r & sc_op_tv_r & store_hit & load_reserved_v_r 
                        & (load_reserved_tag_r == addr_tag_tv)
@@ -638,6 +642,7 @@ module bp_be_dcache
   logic lce_stat_mem_pkt_v;
   logic lce_stat_mem_pkt_yumi;
  
+  logic lce_cmd_v_li, lce_cmd_lock_lo;
   bp_be_dcache_lce
     #(.bp_params_p(bp_params_p))
     lce
@@ -645,7 +650,6 @@ module bp_be_dcache
       ,.reset_i(reset_i)
     
       ,.lce_id_i(cfg_bus_cast_i.dcache_id)
-      ,.lce_mode_i(cfg_bus_cast_i.dcache_mode)
 
       ,.ready_o(ready_o)
       ,.cache_miss_o(cache_miss_o)
@@ -684,8 +688,8 @@ module bp_be_dcache
       ,.lce_resp_ready_i(lce_resp_ready_i)
 
       ,.lce_cmd_i(lce_cmd_i)
-      ,.lce_cmd_v_i(lce_cmd_v_i)
-      ,.lce_cmd_ready_o(lce_cmd_ready_o)
+      ,.lce_cmd_v_i(lce_cmd_v_li)
+      ,.lce_cmd_yumi_o(lce_cmd_yumi_o)
 
       ,.lce_cmd_o(lce_cmd_o)
       ,.lce_cmd_v_o(lce_cmd_v_o)
@@ -694,14 +698,6 @@ module bp_be_dcache
       ,.credits_full_o(credits_full_o)
       ,.credits_empty_o(credits_empty_o)
       );
-
-  // Fault if in uncached mode but access is not for an uncached address
-  assign load_access_fault_o  = (cfg_bus_cast_i.dcache_mode == e_lce_mode_uncached)
-    ? (load_op_tv_r & ~uncached_tv_r)
-    : 1'b0;
-  assign store_access_fault_o = (cfg_bus_cast_i.dcache_mode == e_lce_mode_uncached)
-    ? (store_op_tv_r & ~uncached_tv_r)
-    : 1'b0;
 
   // output stage
   //
@@ -757,7 +753,7 @@ module bp_be_dcache
     ,.els_p(2)
   ) final_data_mux (
     .data_i({uncached_load_data_r, bypass_data_masked})
-    ,.sel_i(uncached_load_data_v_r)
+    ,.sel_i(uncached_tv_r)
     ,.data_o(final_data)
   );
 
@@ -1043,6 +1039,8 @@ module bp_be_dcache
         uncached_load_data_r <= lce_data_mem_pkt.data[0+:dword_width_p];
         uncached_load_data_v_r <= 1'b1;
       end
+      else if (poison_i)
+          uncached_load_data_v_r <= 1'b0;
       else begin
         // once uncached load request is replayed, and v_o goes high,
         // cleared the valid bit.
@@ -1060,6 +1058,40 @@ module bp_be_dcache
   // LCE stat_mem
   //
   assign lce_stat_mem_pkt_yumi = ~(v_tv_r & ~uncached_tv_r) & lce_stat_mem_pkt_v;
+
+  // Lock logic
+  // There are two potential sources for livelock in this cache, both due to multicore interference.
+  // 1) Cache misses are replayed with a 1 cycle delay
+  // 2) LR/SC sequences are guaranteed to make forward progress by the RISC-V spec as long as the
+  //      sequences meet certain conditions.  By ignoring incoming invalidations for a short period
+  //      after each LR, we minimize the chance of SC failure at the cost of less coherence
+  //      responsiveness
+  // TODO: Extract into bsg_edge_detector
+  logic cache_miss_r;
+  always_ff @(posedge clk_i)
+    cache_miss_r <= cache_miss_o;
+  wire cache_miss_resolved = cache_miss_r & ~cache_miss_o;
+
+  logic [`BSG_SAFE_CLOG2(lock_max_limit_p+1)-1:0] lock_cnt_r;
+  wire lock_clr = v_o || (lock_cnt_r == lock_max_limit_p);
+  wire lock_inc = ~lock_clr & (cache_miss_resolved || lr_hit_tv || (lock_cnt_r > 0));
+  bsg_counter_clear_up
+   #(.max_val_p(lock_max_limit_p)
+     ,.init_val_p(0)
+     ,.disable_overflow_warning_p(1)
+     )
+   lock_counter
+    (.clk_i(clk_i)
+     ,.reset_i(reset_i)
+
+     ,.clear_i(lock_clr)
+     ,.up_i(lock_inc)
+     ,.count_o(lock_cnt_r)
+     );
+  // We could actually be more clever here.  We only need to block invalidations to this
+  //   specific line.  However, being extra safe is easier to implement for now.
+  assign lce_cmd_lock_lo = (lock_cnt_r != '0);
+  assign lce_cmd_v_li = lce_cmd_v_i & ~lce_cmd_lock_lo;
 
   // synopsys translate_off
   if (debug_p) begin: axe
@@ -1083,9 +1115,9 @@ module bp_be_dcache
   always_ff @ (negedge clk_i) begin
     if (v_tv_r) begin
       assert($countones(load_hit_tv) <= 1)
-        else $error("multiple load hit: %b. id = %0d", load_hit_tv, cfg_bus_cast_i.dcache_id);
+        else $error("multiple load hit: %b. id = %0d. addr = %H", load_hit_tv, cfg_bus_cast_i.dcache_id, addr_tag_tv);
       assert($countones(store_hit_tv) <= 1)
-        else $error("multiple store hit: %b. id = %0d", store_hit_tv, cfg_bus_cast_i.dcache_id);
+        else $error("multiple store hit: %b. id = %0d. addr = %H", store_hit_tv, cfg_bus_cast_i.dcache_id, addr_tag_tv);
       assert (~(sc_op_tv_r & load_reserved_v_r & (load_reserved_tag_r == addr_tag_tv) & (load_reserved_index_r == addr_index_tv)) | store_hit)
           else $error("sc success without exclusive ownership of cache line: %x %x", load_reserved_tag_r, load_reserved_index_r);
     end

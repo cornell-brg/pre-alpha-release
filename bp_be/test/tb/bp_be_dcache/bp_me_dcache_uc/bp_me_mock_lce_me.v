@@ -21,8 +21,6 @@ module bp_me_mock_lce_me
 
     , localparam block_size_in_bytes_lp=(cce_block_width_p / 8)
 
-    , localparam lce_id_width_lp=`BSG_SAFE_CLOG2(num_lce_p)
-
     , localparam inst_ram_addr_width_lp = `BSG_SAFE_CLOG2(num_cce_instr_ram_els_p)
 
     , localparam ptag_width_lp = (paddr_width_p-bp_page_offset_width_gp)
@@ -40,8 +38,8 @@ module bp_me_mock_lce_me
     , parameter dramsim2_en_p = 0
     , parameter clock_period_in_ps_p = 1000
     , parameter prog_name_p = "null.mem"
-    , parameter dram_bp_params_p  = "DDR2_micron_16M_8b_x8_sg3E.ini"
-    , parameter dram_sys_bp_params_p = "system.ini"
+    , parameter dram_cfg_p  = "DDR2_micron_16M_8b_x8_sg3E.ini"
+    , parameter dram_sys_cfg_p = "system.ini"
     , parameter dram_capacity_p = 16384
 
   )
@@ -174,7 +172,7 @@ module bp_me_mock_lce_me
     .clk_i(clk_i)
     ,.reset_i(reset_i)
     ,.freeze_i(freeze_li)
-    ,.lce_id_i(lce_id_width_lp'(0))
+    ,.lce_id_i(lce_id_width_p'(0))
 
     ,.dcache_pkt_i(rolly_dcache_pkt_lo)
     ,.v_i(dcache_v_li)
@@ -319,7 +317,7 @@ always_ff @(posedge clk_i)
       freeze_r <= config_data_li[0];
   end
 
-  bp_cce_top #(
+  bp_cce_buffered #(
     .bp_params_p(bp_params_p)
     ,.cce_trace_p(cce_trace_p)
   ) cce (
@@ -375,8 +373,8 @@ always_ff @(posedge clk_i)
    #(.mem_id_p('0)
      ,.clock_period_in_ps_p(clock_period_in_ps_p)
      ,.prog_name_p(prog_name_p)
-     ,.dram_bp_params_p(dram_bp_params_p)
-     ,.dram_sys_bp_params_p(dram_sys_bp_params_p)
+     ,.dram_cfg_p(dram_cfg_p)
+     ,.dram_sys_cfg_p(dram_sys_cfg_p)
      ,.dram_capacity_p(dram_capacity_p)
      ,.num_lce_p(num_lce_p)
      ,.num_cce_p(num_cce_p)

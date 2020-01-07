@@ -20,13 +20,13 @@ module bp_be_calculator_top
  #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
     `declare_bp_proc_params(bp_params_p)
     `declare_bp_fe_be_if_widths(vaddr_width_p, paddr_width_p, asid_width_p, branch_metadata_fwd_width_p)
-    `declare_bp_lce_cce_if_widths(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
+    `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
 
    // Default parameters
    , parameter fp_en_p                  = 0
 
    // Generated parameters
-   , localparam cfg_bus_width_lp       = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+   , localparam cfg_bus_width_lp       = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
    , localparam calc_status_width_lp    = `bp_be_calc_status_width(vaddr_width_p)
    , localparam exception_width_lp      = `bp_be_exception_width
    , localparam mmu_cmd_width_lp        = `bp_be_mmu_cmd_width(vaddr_width_p)
@@ -83,7 +83,7 @@ module bp_be_calculator_top
 
 // Declare parameterizable structs
 `declare_bp_be_mmu_structs(vaddr_width_p, ppn_width_p, lce_sets_p, cce_block_width_p / 8)
-`declare_bp_cfg_bus_s(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p);
+`declare_bp_cfg_bus_s(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p);
 `declare_bp_be_internal_if_structs(vaddr_width_p, paddr_width_p, asid_width_p, branch_metadata_fwd_width_p);
 
 // Cast input and output ports 
@@ -203,6 +203,23 @@ bp_be_bypass
    ,.bypass_rs2_o(bypass_irs2)
    );
 
+bp_be_dispatch_pkt_s reservation_n, reservation_r;
+always_comb
+  begin
+    reservation_n        = dispatch_pkt_i;
+    reservation_n.decode = (~flush_i & dispatch_pkt.v) ? dispatch_pkt.decode : '0;
+    reservation_n.rs1    = bypass_rs1;
+    reservation_n.rs2    = bypass_rs2;
+  end
+
+bsg_dff
+ #(.width_p(dispatch_pkt_width_lp))
+ reservation_reg
+  (.clk_i(clk_i)
+   ,.data_i(reservation_n)
+   ,.data_o(reservation_r)
+   );
+
 // Computation pipelines
 // Integer pipe: 1 cycle latency
 bp_be_pipe_int 
@@ -293,23 +310,6 @@ bsg_dff
    ,.data_o(calc_stage_r)
    );
 
-bp_be_dispatch_pkt_s reservation_n, reservation_r;
-always_comb
-  begin
-    reservation_n        = dispatch_pkt_i;
-    reservation_n.decode = dispatch_pkt.v ? dispatch_pkt.decode : '0;
-    reservation_n.rs1    = bypass_rs1;
-    reservation_n.rs2    = bypass_rs2;
-  end
-
-bsg_dff
- #(.width_p(dispatch_pkt_width_lp))
- reservation_reg
-  (.clk_i(clk_i)
-   ,.data_i(reservation_n)
-   ,.data_o(reservation_r)
-   );
-
 // If a pipeline has completed an instruction (pipe_xxx_v), then mux in the calculated result.
 // Else, mux in the previous stage of the completion pipe. Since we are single issue and have
 //   static latencies, we cannot have two pipelines complete at the same time.
@@ -360,6 +360,7 @@ always_comb
     // Strip out elements of the dispatch packet that we want to save for later
     calc_stage_isd.pc             = reservation_n.pc;
     calc_stage_isd.instr          = reservation_n.instr;
+    calc_stage_isd.v              = reservation_n.v;
     calc_stage_isd.queue_v        = reservation_n.decode.queue_v;
     calc_stage_isd.instr_v        = reservation_n.decode.instr_v;
     calc_stage_isd.pipe_int_v     = reservation_n.decode.pipe_int_v;
@@ -368,6 +369,7 @@ always_comb
     calc_stage_isd.pipe_fp_v      = reservation_n.decode.pipe_fp_v;
     calc_stage_isd.mem_v          = reservation_n.decode.mem_v;
     calc_stage_isd.csr_v          = reservation_n.decode.csr_v;
+    calc_stage_isd.serial_v       = reservation_n.decode.serial_v;
     calc_stage_isd.irf_w_v        = reservation_n.decode.irf_w_v;
     calc_stage_isd.frf_w_v        = reservation_n.decode.frf_w_v;
 
@@ -376,11 +378,11 @@ always_comb
     calc_status.ex1_npc                  = br_tgt_int1;
     calc_status.ex1_br_or_jmp            = reservation_r.decode.br_v | reservation_r.decode.jmp_v;
     calc_status.ex1_instr_v              = reservation_r.decode.instr_v & ~exc_stage_r[0].poison_v;
-    calc_status.mem1_fencei_v            = reservation_r.decode.fencei_v;
 
     // Dependency information for pipelines
     for (integer i = 0; i < pipe_stage_els_lp; i++) 
       begin : dep_status
+        calc_status.dep_status[i].v         = calc_stage_r[i].queue_v;
         calc_status.dep_status[i].int_iwb_v = calc_stage_r[i].pipe_int_v 
                                               & ~exc_stage_n[i+1].poison_v
                                               & calc_stage_r[i].irf_w_v;
@@ -398,7 +400,7 @@ always_comb
                                               & calc_stage_r[i].frf_w_v;
         calc_status.dep_status[i].rd_addr   = calc_stage_r[i].instr.fields.rtype.rd_addr;
         calc_status.dep_status[i].mem_v     = calc_stage_r[i].mem_v & ~exc_stage_n[i+1].poison_v;
-        calc_status.dep_status[i].serial_v  = calc_stage_r[i].csr_v & ~exc_stage_n[i+1].poison_v;
+        calc_status.dep_status[i].serial_v  = calc_stage_r[i].serial_v & ~exc_stage_n[i+1].poison_v;
       end
 
     // Slicing the completion pipe for Forwarding information
@@ -437,13 +439,14 @@ always_comb
         exc_stage_n[3].poison_v        = exc_stage_r[2].poison_v | pipe_mem_miss_v_lo | pipe_mem_exc_v_lo;
   end
 
-assign commit_pkt.v          = ~exc_stage_r[2].poison_v;
+assign commit_pkt.v          = calc_stage_r[2].v & ~exc_stage_r[2].poison_v;
 assign commit_pkt.queue_v    = calc_stage_r[2].queue_v & ~exc_stage_r[2].roll_v;
 assign commit_pkt.bubble_v   = ~calc_stage_r[2].queue_v & ~exc_stage_r[2].poison_v;
 assign commit_pkt.instret    = calc_stage_r[2].instr_v & ~exc_stage_n[3].poison_v;
 assign commit_pkt.cache_miss = pipe_mem_miss_v_lo & ~exc_stage_r[2].poison_v;
 assign commit_pkt.tlb_miss   = 1'b0; // TODO: Add to mem resp
 assign commit_pkt.pc         = calc_stage_r[2].pc;
+assign commit_pkt.npc        = calc_stage_r[1].pc;
 assign commit_pkt.instr      = calc_stage_r[2].instr;
 
 assign wb_pkt.rd_w_v  = calc_stage_r[3].irf_w_v & ~exc_stage_r[3].poison_v;

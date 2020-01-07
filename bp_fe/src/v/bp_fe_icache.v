@@ -22,17 +22,17 @@ module bp_fe_icache
   import bp_fe_icache_pkg::*;  
   #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
    `declare_bp_proc_params(bp_params_p)
-   `declare_bp_lce_cce_if_widths(num_cce_p, num_lce_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
-    `declare_bp_fe_tag_widths(lce_assoc_p, lce_sets_p, num_lce_p, num_cce_p, dword_width_p, paddr_width_p)
+   `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, dword_width_p, cce_block_width_p)
+    `declare_bp_fe_tag_widths(lce_assoc_p, lce_sets_p, lce_id_width_p, cce_id_width_p, dword_width_p, paddr_width_p)
     `declare_bp_icache_widths(vaddr_width_p, tag_width_lp, lce_assoc_p) 
 
-   , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+   , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
     , parameter debug_p=0
     )
    (input                                              clk_i
     , input                                            reset_i
 
-    , input [cfg_bus_width_lp-1:0]                    cfg_bus_i
+    , input [cfg_bus_width_lp-1:0]                     cfg_bus_i
 
     , input [vaddr_width_p-1:0]                        vaddr_i
     , input                                            vaddr_v_i
@@ -41,11 +41,10 @@ module bp_fe_icache
     , input [ptag_width_p-1:0]                         ptag_i
     , input                                            ptag_v_i
     , input                                            uncached_i
-    , input                                            poison_tl_i
+    , input                                            poison_i
     
     , output [instr_width_p-1:0]                       data_o
     , output                                           data_v_o
-    , output                                           instr_access_fault_o
     , output                                           cache_miss_o
 
     , output [lce_cce_req_width_lp-1:0]                lce_req_o
@@ -58,14 +57,14 @@ module bp_fe_icache
 
     , input [lce_cmd_width_lp-1:0]                     lce_cmd_i
     , input                                            lce_cmd_v_i
-    , output                                           lce_cmd_ready_o
+    , output                                           lce_cmd_yumi_o
 
     , output [lce_cmd_width_lp-1:0]                    lce_cmd_o
     , output                                           lce_cmd_v_o
     , input                                            lce_cmd_ready_i 
  );
 
-  `declare_bp_cfg_bus_s(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p);
+  `declare_bp_cfg_bus_s(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p);
   bp_cfg_bus_s cfg_bus_cast_i;
   assign cfg_bus_cast_i = cfg_bus_i;
 
@@ -90,7 +89,7 @@ module bp_fe_icache
   logic [bp_page_offset_width_gp-1:0] page_offset_tl_r;
   logic [vaddr_width_p-1:0]           vaddr_tl_r;
 
-  assign tl_we = vaddr_v_i; 
+  assign tl_we = vaddr_v_i;
 
   always_ff @ (posedge clk_i) begin
     if (reset_i) begin
@@ -173,7 +172,7 @@ module bp_fe_icache
   logic [index_width_lp-1:0]                    addr_index_tv;
   logic [word_offset_width_lp-1:0]              addr_word_offset_tv;
 
-  assign tv_we = v_tl_r & ~poison_tl_i & ptag_v_i;
+  assign tv_we = v_tl_r & ~poison_i & ptag_v_i;
 
   always_ff @ (posedge clk_i) begin
     if (reset_i) begin
@@ -330,7 +329,7 @@ module bp_fe_icache
 
      ,.lce_cmd_i(lce_cmd_i)
      ,.lce_cmd_v_i(lce_cmd_v_i)
-     ,.lce_cmd_ready_o(lce_cmd_ready_o)
+     ,.lce_cmd_yumi_o(lce_cmd_yumi_o)
 
      ,.lce_cmd_o(lce_cmd_o)
      ,.lce_cmd_v_o(lce_cmd_v_o)
@@ -338,10 +337,6 @@ module bp_fe_icache
      ); 
 
   // Fault if in uncached mode but access is not for an uncached address
-  assign instr_access_fault_o = (cfg_bus_cast_i.icache_mode == e_lce_mode_uncached)
-    ? ~uncached_tv_r
-    : 1'b0;
-
   assign data_v_o = v_tv_r & ((uncached_tv_r & uncached_load_data_v_r) | ~cache_miss_o);
 
   logic [dword_width_p-1:0]   ld_data_way_picked;
@@ -361,7 +356,7 @@ module bp_fe_icache
     ,.els_p(2)
   ) final_data_mux (
     .data_i({uncached_load_data_r, ld_data_way_picked})
-    ,.sel_i(uncached_load_data_v_r)
+    ,.sel_i(uncached_tv_r)
     ,.data_o(final_data)
   );
 
@@ -509,6 +504,8 @@ module bp_fe_icache
         uncached_load_data_r <= lce_data_mem_pkt.data[0+:dword_width_p];
         uncached_load_data_v_r <= 1'b1;
       end
+      else if (poison_i)
+          uncached_load_data_v_r <= 1'b0;
       else begin
         // once the uncached load is replayed, and v_o goes high, clear the valid bit
         if (data_v_o) begin
@@ -531,8 +528,8 @@ module bp_fe_icache
       ,.dword_width_p(instr_width_p)
     ) cc (
       .clk_i(clk_i)
-      ,.id_i(lce_id_i)
-      ,.v_i(icache_pc_gen_data_v_o)
+      ,.id_i(cfg_bus_cast_i.icache_id)
+      ,.v_i(data_v_o)
       ,.addr_i(addr_tv_r)
       ,.data_i(data_o)
     );

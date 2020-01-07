@@ -26,6 +26,8 @@ module bp_fe_pc_gen
    , output                                          mem_cmd_v_o
    , input                                           mem_cmd_yumi_i
 
+   , output [rv64_priv_width_gp-1:0]                 mem_priv_o
+   , output                                          mem_translation_en_o
    , output                                          mem_poison_o
 
    , input [mem_resp_width_lp-1:0]                   mem_resp_i
@@ -34,7 +36,7 @@ module bp_fe_pc_gen
 
    , input [fe_cmd_width_lp-1:0]                     fe_cmd_i
    , input                                           fe_cmd_v_i
-   , output logic                                    fe_cmd_yumi_o
+   , output                                          fe_cmd_yumi_o
    , output                                          fe_cmd_processed_o
 
    , output [fe_queue_width_lp-1:0]                  fe_queue_o
@@ -84,6 +86,39 @@ wire itlb_fence_v     = fe_cmd_v_i & (fe_cmd_cast_i.opcode == e_op_itlb_fence);
 wire attaboy_v        = fe_cmd_v_i & (fe_cmd_cast_i.opcode == e_op_attaboy);
 wire cmd_nonattaboy_v = fe_cmd_v_i & (fe_cmd_cast_i.opcode != e_op_attaboy);
 
+wire trap_v = pc_redirect_v & (fe_cmd_cast_i.operands.pc_redirect_operands.subopcode == e_subop_trap);
+wire br_res_v = pc_redirect_v
+                & (fe_cmd_cast_i.operands.pc_redirect_operands.subopcode == e_subop_branch_mispredict)
+                & (fe_cmd_cast_i.operands.pc_redirect_operands.misprediction_reason == e_incorrect_prediction);
+
+logic [rv64_priv_width_gp-1:0] shadow_priv_n, shadow_priv_r;
+wire shadow_priv_w = state_reset_v | trap_v;
+assign shadow_priv_n = fe_cmd_cast_i.operands.pc_redirect_operands.priv;
+bsg_dff_reset_en
+ #(.width_p(rv64_priv_width_gp))
+ shadow_priv_reg
+  (.clk_i(clk_i)
+   ,.reset_i(reset_i)
+   ,.en_i(shadow_priv_w)
+
+   ,.data_i(shadow_priv_n)
+   ,.data_o(shadow_priv_r)
+   );
+   
+logic shadow_translation_en_n, shadow_translation_en_r;
+wire shadow_translation_en_w = state_reset_v | trap_v | itlb_fence_v;
+assign shadow_translation_en_n = fe_cmd_cast_i.operands.pc_redirect_operands.translation_enabled;
+bsg_dff_reset_en
+ #(.width_p(1))
+ shadow_translation_en_reg
+  (.clk_i(clk_i)
+   ,.reset_i(reset_i)
+   ,.en_i(shadow_translation_en_w)
+
+   ,.data_i(shadow_translation_en_n)
+   ,.data_o(shadow_translation_en_r)
+   );
+
 // Until we support C, must be aligned to 4 bytes
 // There's also an interesting question about physical alignment (I/O devices, etc)
 //   But let's punt that for now...
@@ -91,13 +126,14 @@ wire cmd_nonattaboy_v = fe_cmd_v_i & (fe_cmd_cast_i.opcode != e_op_attaboy);
 wire misalign_exception           = 1'b0;
 wire itlb_miss_exception          = v_if2 & (mem_resp_v_i & mem_resp_cast_i.itlb_miss);
 wire instr_access_fault_exception = v_if2 & (mem_resp_v_i & mem_resp_cast_i.instr_access_fault);
+wire instr_page_fault_exception   = v_if2 & (mem_resp_v_i & mem_resp_cast_i.instr_page_fault);
 
 wire fetch_fail     = v_if2 & ~fe_queue_v_o;
 wire queue_miss     = v_if2 & ~fe_queue_ready_i;
 wire icache_miss    = v_if2 & (mem_resp_v_i & mem_resp_cast_i.icache_miss);
-wire flush          = itlb_miss_exception | icache_miss | queue_miss | cmd_nonattaboy_v;
+wire fe_exception_v = v_if2 & (instr_page_fault_exception | instr_access_fault_exception | misalign_exception | itlb_miss_exception);
+wire flush          = fe_exception_v | icache_miss | queue_miss | cmd_nonattaboy_v;
 wire fe_instr_v     = v_if2 & mem_resp_v_i & ~flush;
-wire fe_exception_v = v_if2 & (instr_access_fault_exception | misalign_exception | itlb_miss_exception);
 
 // FSM
 enum bit [1:0] {e_wait=2'd0, e_run, e_stall} state_n, state_r;
@@ -237,7 +273,7 @@ bp_fe_btb
    ,.w_idx_i(fe_cmd_branch_metadata.btb_idx)
    // Literature says that we should only update btb on taken branches, but I'd like to see
    // benchmarks...
-   ,.w_v_i((pc_redirect_v | attaboy_v) & fe_cmd_yumi_o) // & fe_cmd_branch_metadata.pred_taken)
+   ,.w_v_i((br_res_v | attaboy_v) & fe_cmd_yumi_o) // & fe_cmd_branch_metadata.pred_taken)
    ,.br_tgt_i(fe_cmd_cast_i.vaddr)
    );
 
@@ -252,7 +288,7 @@ bp_fe_bht
    ,.idx_r_i(fe_queue_cast_o_branch_metadata.bht_idx)
    ,.predict_o(bht_pred_lo)
 
-   ,.w_v_i((pc_redirect_v | attaboy_v) & fe_cmd_yumi_o)
+   ,.w_v_i((br_res_v | attaboy_v) & fe_cmd_yumi_o)
    ,.idx_w_i(fe_cmd_branch_metadata.bht_idx)
    ,.correct_i(attaboy_v)
    );
@@ -280,7 +316,7 @@ assign br_target  = pc_gen_stage_r[1].pc + scan_instr.imm;
 // This may cause us to fetch during an I$ miss or a with a full queue.  
 // FE cmds normally flush the queue, so we don't expect this to affect
 //   power much in practice.
-assign mem_cmd_v_o = cmd_nonattaboy_v || (~is_wait & fe_queue_ready_i & ~flush); 
+assign mem_cmd_v_o = cmd_nonattaboy_v || (~is_wait & fe_queue_ready_i & ~flush);
 always_comb
   begin
     mem_cmd_cast_o = '0;
@@ -303,7 +339,9 @@ always_comb
       end
   end
 
-assign mem_poison_o = ~pc_gen_stage_n[1].v;
+assign mem_poison_o         = pc_gen_stage_r[0].v & ~pc_gen_stage_n[1].v;
+assign mem_priv_o           = shadow_priv_w ? shadow_priv_n : shadow_priv_r;
+assign mem_translation_en_o = shadow_translation_en_w ? shadow_translation_en_n : shadow_translation_en_r;
 
 assign mem_resp_ready_o = 1'b1;
 
@@ -326,7 +364,9 @@ always_comb
                                                        ? e_instr_misaligned
                                                        : itlb_miss_exception
                                                          ? e_itlb_miss
-                                                         : e_instr_access_fault;
+                                                         : instr_page_fault_exception
+                                                           ? e_instr_page_fault
+                                                           : e_instr_access_fault;
       end
     else 
       begin

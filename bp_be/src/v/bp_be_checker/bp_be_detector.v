@@ -22,30 +22,31 @@ module bp_be_detector
    `declare_bp_proc_params(bp_params_p)
 
    // Generated parameters
-   , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+   , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
    , localparam isd_status_width_lp = `bp_be_isd_status_width(vaddr_width_p, branch_metadata_fwd_width_p)
    , localparam calc_status_width_lp = `bp_be_calc_status_width(vaddr_width_p)
    )
   (input                               clk_i
    , input                             reset_i
 
-   , input [cfg_bus_width_lp-1:0]     cfg_bus_i
+   , input [cfg_bus_width_lp-1:0]      cfg_bus_i
 
    // Dependency information
    , input [isd_status_width_lp-1:0]   isd_status_i
    , input [calc_status_width_lp-1:0]  calc_status_i
    , input [vaddr_width_p-1:0]         expected_npc_i
+   , input                             fe_cmd_ready_i
    , input                             mmu_cmd_ready_i
    , input                             credits_full_i
    , input                             credits_empty_i
-
-   , input                             flush_i
+   , input                             debug_mode_i
+   , input                             single_step_i
 
    // Pipeline control signals from the checker to the calculator
    , output                            chk_dispatch_v_o
   );
 
-`declare_bp_cfg_bus_s(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p);
+`declare_bp_cfg_bus_s(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p);
 `declare_bp_be_internal_if_structs(vaddr_width_p, paddr_width_p, asid_width_p, branch_metadata_fwd_width_p); 
 
 bp_cfg_bus_s cfg_bus_cast_i;
@@ -70,7 +71,9 @@ logic [2:0] irs1_data_haz_v , irs2_data_haz_v;
 logic [2:0] frs1_data_haz_v , frs2_data_haz_v;
 logic [2:0] rs1_match_vector, rs2_match_vector;
 
-logic fence_haz_v, serial_haz_v, data_haz_v, struct_haz_v, mem_in_pipe_v;
+logic fence_haz_v, step_haz_v, debug_haz_v, queue_haz_v, interrupt_haz_v, serial_haz_v;
+logic data_haz_v, control_haz_v, struct_haz_v;
+logic instr_in_pipe_v, mem_in_pipe_v;
 
 always_comb 
   begin
@@ -122,14 +125,22 @@ always_comb
     frs2_data_haz_v[2] = (isd_status_cast_i.isd_frs2_v & rs2_match_vector[2])
                          & (dep_status_li[2].fp_fwb_v);
 
+    instr_in_pipe_v    = dep_status_li[0].v | dep_status_li[1].v | dep_status_li[2].v;
     mem_in_pipe_v      = dep_status_li[0].mem_v | dep_status_li[1].mem_v | dep_status_li[2].mem_v;
     fence_haz_v        = (isd_status_cast_i.isd_fence_v & (~credits_empty_i | mem_in_pipe_v))
                          | (isd_status_cast_i.isd_mem_v & credits_full_i);
+    interrupt_haz_v    = isd_status_cast_i.isd_irq_v & instr_in_pipe_v;
+    debug_haz_v        = (~isd_status_cast_i.isd_debug_v & debug_mode_i)
+                         | (isd_status_cast_i.isd_debug_v & instr_in_pipe_v);
+    queue_haz_v        = ~fe_cmd_ready_i;
+    step_haz_v         = single_step_i & instr_in_pipe_v;
 
     serial_haz_v       = dep_status_li[0].serial_v
                          | dep_status_li[1].serial_v
                          | dep_status_li[2].serial_v
                          | dep_status_li[3].serial_v;
+
+    control_haz_v = fence_haz_v | interrupt_haz_v | step_haz_v | serial_haz_v | debug_haz_v;
 
     // Combine all data hazard information
     // TODO: Parameterize away floating point data hazards without hardware support
@@ -139,11 +150,13 @@ always_comb
                  | (|frs2_data_haz_v);
 
     // Combine all structural hazard information
-    struct_haz_v = ~mmu_cmd_ready_i | fence_haz_v | serial_haz_v;
+    struct_haz_v = (cfg_bus_cast_i.freeze & ~isd_status_cast_i.isd_debug_v)
+                   | (~mmu_cmd_ready_i & isd_status_cast_i.isd_mem_v)
+                   | queue_haz_v;
   end
 
 // Generate calculator control signals
-assign chk_dispatch_v_o = ~(data_haz_v | struct_haz_v | cfg_bus_cast_i.freeze); 
+assign chk_dispatch_v_o = cfg_bus_cast_i.dispatch || ~(control_haz_v | data_haz_v | struct_haz_v);
 
 endmodule
 

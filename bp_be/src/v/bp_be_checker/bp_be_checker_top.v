@@ -36,7 +36,7 @@ module bp_be_checker_top
 
    // VM parameters
    , localparam tlb_entry_width_lp = `bp_pte_entry_leaf_width(paddr_width_p)
-    , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, num_core_p, num_cce_p, num_lce_p, cce_pc_width_p, cce_instr_width_p)
+    , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
    )
   (input                              clk_i
    , input                            reset_i
@@ -72,7 +72,10 @@ module bp_be_checker_top
    , output                           flush_o
 
    , input                            tlb_fence_i
+   , input                            fencei_i
    , input                            accept_irq_i
+   , input                            debug_mode_i
+   , input                            single_step_i
    
    //iTLB fill interface
     , input                           itlb_fill_v_i
@@ -96,7 +99,6 @@ assign calc_status_cast_i = calc_status_i;
 // Intermediate connections
 bp_be_isd_status_s isd_status;
 logic [vaddr_width_p-1:0] expected_npc_lo;
-logic flush;
 
 // Datapath
 bp_be_director 
@@ -120,6 +122,7 @@ bp_be_director
    ,.commit_pkt_i(commit_pkt_i)
    ,.trap_pkt_i(trap_pkt_i)
    ,.tlb_fence_i(tlb_fence_i)
+   ,.fencei_i(fencei_i)
 
    ,.itlb_fill_v_i(itlb_fill_v_i)
    ,.itlb_fill_vaddr_i(itlb_fill_vaddr_i)
@@ -137,11 +140,12 @@ bp_be_detector
    ,.isd_status_i(isd_status)
    ,.calc_status_i(calc_status_i)
    ,.expected_npc_i(expected_npc_lo)
+   ,.fe_cmd_ready_i(fe_cmd_ready_i)
    ,.mmu_cmd_ready_i(mmu_cmd_ready_i)
    ,.credits_full_i(credits_full_i)
    ,.credits_empty_i(credits_empty_i)
-
-   ,.flush_i(flush_o)
+   ,.debug_mode_i(debug_mode_i)
+   ,.single_step_i(single_step_i)
 
    ,.chk_dispatch_v_o(chk_dispatch_v_o)
    );
@@ -162,6 +166,7 @@ bp_be_scheduler
    ,.dispatch_v_i(chk_dispatch_v_o)
    ,.cache_miss_v_i(commit_pkt.cache_miss | commit_pkt.tlb_miss)
    ,.cmt_v_i(commit_pkt.queue_v)
+   ,.debug_mode_i(debug_mode_i)
 
    ,.fe_queue_roll_o(fe_queue_roll_o)
    ,.fe_queue_deq_o(fe_queue_deq_o)

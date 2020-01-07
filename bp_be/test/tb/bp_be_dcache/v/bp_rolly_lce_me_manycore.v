@@ -28,7 +28,6 @@ module bp_rolly_lce_me_manycore
     , localparam dcache_pkt_width_lp=
       `bp_be_dcache_pkt_width(bp_page_offset_width_gp,dword_width_p)
 
-    , localparam lce_id_width_lp=`BSG_SAFE_CLOG2(num_lce_p)
     , localparam inst_ram_addr_width_lp = `BSG_SAFE_CLOG2(num_cce_instr_ram_els_p)
   )
   (
@@ -123,7 +122,7 @@ module bp_rolly_lce_me_manycore
   ) dcache (
     .clk_i(bp_clk_i)
     ,.reset_i(reset_i)
-    ,.lce_id_i(lce_id_width_lp'(0))
+    ,.lce_id_i(lce_id_width_p'(0))
 
     ,.dcache_pkt_i(rolly_dcache_pkt)
     ,.v_i(rolly_v_lo)
@@ -183,7 +182,7 @@ module bp_rolly_lce_me_manycore
 
   // memory end
   //
-  `declare_bp_me_if(paddr_width_p, cce_block_width_p, num_lce_p, lce_assoc_p);
+  `declare_bp_me_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p);
 
   logic [inst_ram_addr_width_lp-1:0] cce_inst_boot_rom_addr;
   logic [`bp_cce_inst_width-1:0] cce_inst_boot_rom_data;
